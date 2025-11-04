@@ -6,7 +6,7 @@
   "start": "next start",
   "build": "next build",
   "lint": "next lint",
-  "test": "echo \"No tests configured yet. This is a placeholder for Jest.\" && exit 0",
+  "test": "echo \"No tests configured yet. This is a placeholder for Jest.\" && exit 0"
   },
   "dependencies": {
     "lucide-react": "^0.552.0",
