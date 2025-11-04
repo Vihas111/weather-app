@@ -17,30 +17,26 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          # This is the fix for the linting error
           node-version: '20' 
           cache: 'npm'
-          # This is the fix for the EJSONPARSE error
           cache-dependency-path: frontend/package-lock.json
 
       - name: Install dependencies
-        # This runs all commands inside the /frontend folder
         working-directory: ./frontend 
-        run: npm ci # Use 'ci' for faster, more reliable installs in CI
+        run: npm ci
 
       - name: Run linting
-        working-directory: ./frontend
-        # This is the fix for the weird path error
-        run: npx next lint 
+        working-directory: ./frontend 
+        # This is the new fix. 
+        # We explicitly tell 'next lint' to check the current directory.
+        run: npx next lint --dir .
 
       - name: Run tests
         working-directory: ./frontend
-        # This will now run your placeholder test script
         run: npm test 
 
       - name: Build application
         working-directory: ./frontend
-        # This is the fix for the 'react-scripts' error
         run: npx next build 
 
       - name: Security audit
@@ -61,3 +57,4 @@ jobs:
         
       - name: Deploy to production
         run: echo "Deploying to production environment..."
+
