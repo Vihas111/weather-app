@@ -3,10 +3,10 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev --webpack",
-    "build": "next build --webpack",
-    "start": "next start",
-    "lint": "eslint"
+  "start": "next start",
+  "build": "next build",
+  "lint": "next lint",
+  "test": "echo \"No tests configured yet. This is a placeholder for Jest.\" && exit 0"
   },
   "dependencies": {
     "lucide-react": "^0.552.0",
