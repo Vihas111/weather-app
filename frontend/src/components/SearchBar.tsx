@@ -1,4 +1,4 @@
-"use client"; // This must be a client component
+'use client'; // This must be a client component
 
 import { useState } from 'react';
 import { Search } from 'lucide-react'; // Import the search icon
@@ -28,29 +28,32 @@ export default function SearchBar() {
       // Call our new Next.js API route
       const response = await fetch(`/api/weather/${city}`);
       
-      // --- THIS IS THE FIX ---
       // 1. First, check if the response was successful (e.g., 200 OK)
       if (!response.ok) {
         // If not, try to parse the error message from the body
         // This will handle our 404 JSON error: {"error": "..."}
-        let errorData;
+        let errorData: { error?: string }; // Define type for errorData
         try {
           errorData = await response.json();
-        } catch (parseError) {
+        } catch (_parseError) { // ✅ FIX: Prefixed unused var with _
           // If the error response itself isn't JSON, throw a generic error
           throw new Error(`HTTP error! Status: ${response.status}`);
         }
         // Throw the specific error message from our API
-        throw new Error(errorData.error || 'Something went wrong');
+        throw new Error(errorData?.error || 'Something went wrong');
       }
 
       // 2. Only if the response.ok is true, do we parse the success JSON
       const data: WeatherData = await response.json();
       setWeather(data);
-      // --- END OF FIX ---
 
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err: unknown) { // ✅ FIX: Use 'unknown' instead of 'any'
+      // ✅ Type guard
+      if (err instanceof Error) {
+        setError(err.message);
+      } else {
+        setError('An unknown error occurred');
+      }
     } finally {
       setIsLoading(false);
     }
@@ -102,4 +105,3 @@ export default function SearchBar() {
     </div>
   );
 }
-
