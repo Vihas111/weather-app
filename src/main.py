@@ -6,10 +6,14 @@ from pathlib import Path
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 
-# New imports for CSV logging
+# Imports for CSV logging
 import csv
 from datetime import datetime
 import threading
+
+# Imports for Caching
+import cachetools
+from functools import lru_cache
 
 # --- 1. Setup & API Key ---
 
@@ -287,6 +291,11 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# --- Caching Setup ---
+# Create a cache that holds 100 items (maxsize)
+# and where each item expires after 900 seconds (15 minutes) (ttl)
+api_cache = cachetools.TTLCache(maxsize=100, ttl=900)
+
 # --- CSV Logging Setup ---
 LOG_FILE = DATA_DIR / "weather_log.csv"
 CSV_HEADERS = [
@@ -324,8 +333,12 @@ def log_search_to_csv(data: dict):
 
 # --- 4. Helper functions (Processing) ---
 
+@cachetools.cached(api_cache) # This decorator enables caching
 def get_weather_data_from_api(city_name: str):
-    """Fetches raw data from WeatherAPI."""
+    """
+    Fetches raw data from WeatherAPI.
+    Results are cached for 15 minutes.
+    """
     base_url = "https://api.weatherapi.com/v1/forecast.json"
     
     query_param = city_name
@@ -400,7 +413,7 @@ def get_weather(city: str = Query(..., min_length=2)):
     if not city:
         raise HTTPException(status_code=400, detail="A 'city' query parameter is required.")
     
-    # 1. Fetch
+    # 1. Fetch (This will now use the cache)
     raw_data = get_weather_data_from_api(city)
     
     # 2. Process
