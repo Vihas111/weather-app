@@ -1,0 +1,20 @@
+{
+  "london": {
+    "data": {
+      "temperature": 15,
+      "humidity": 70,
+      "wind": 10,
+      "condition": "Cloudy"
+    },
+    "timestamp": 1762448308704
+  },
+  "bengaluru": {
+    "data": {
+      "temperature": 28,
+      "humidity": 60,
+      "wind": 15,
+      "condition": "Sunny"
+    },
+    "timestamp": 1762448320719
+  }
+}
