@@ -1,0 +1,51 @@
+# Name of your workflow (shows up in the "Actions" tab on GitHub)
+name: Python CI Backend Tests
+
+# When this workflow should run
+on:
+  # Run on every push to your main/master branch
+  push:
+    branches: [ "main", "master" ]
+  # Also run on every pull request
+  pull_request:
+    branches: [ "main", "master" ]
+
+# The list of jobs to do
+jobs:
+  # We only have one job, called "test-backend"
+  test-backend:
+    # Use the latest version of Ubuntu (a Linux OS) to run the job
+    runs-on: ubuntu-latest
+
+    steps:
+      # 1. Checks out your repository code so the job can use it
+      - name: Check out code
+        uses: actions/checkout@v4
+
+      # 2. Sets up the Python programming language
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10' # You can change this to 3.11, etc.
+
+      # 3. Installs all your project's libraries from requirements.txt
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      
+      # 4. Creates the .env file with your API key
+      #    This is a SUPER important step!
+      - name: Create .env file
+        run: |
+          echo "API_KEY=${{ secrets.WEATHER_API_KEY }}" > .env
+
+      # 5. Runs your FastAPI server in the background
+      - name: Run server in background
+        run: |
+          uvicorn src.main:app --host 0.0.0.0 --port 8000 &
+          sleep 10 # Give the server 10 seconds to start up
+
+      # 6. Runs your test file (test_main.py)
+      - name: Run tests with pytest
+        run: pytest
