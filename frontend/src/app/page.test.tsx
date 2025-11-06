@@ -7,15 +7,20 @@ import Page from './page'; // Imports your main page component
 import '@testing-library/jest-dom';
 
 describe('Home Page', () => {
-  it('renders the main element without crashing', () => {
+  it('renders the main heading and search bar', () => {
     // 1. Render the component
     render(<Page />);
 
-    // 2. Find an element
-    // (This assumes your page.tsx has a <main> tag, which is standard)
-    const mainElement = screen.getByRole('main');
+    // --- THIS IS THE FIX ---
+    // 2. Find an element that we know is on the new page
+    const headingElement = screen.getByRole('heading', {
+      name: /san francisco/i,
+    });
 
-    // 3. Assert that the element exists
-    expect(mainElement).toBeInTheDocument();
+    // 3. Assert that the heading exists
+    expect(headingElement).toBeInTheDocument();
+
+    // 4. Also check that our SearchBar was rendered
+    expect(screen.getByPlaceholderText('Enter city name (e.g., london)')).toBeInTheDocument();
   });
 });
