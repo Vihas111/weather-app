@@ -1,26 +1,27 @@
-/**
- * @jest-environment jsdom
- */
-
 import { render, screen } from '@testing-library/react';
-import Page from './page'; // Imports your main page component
-import '@testing-library/jest-dom';
+import Home from './page';
+
+// Mock the fetch function globally so we don't actually hit the API during tests
+global.fetch = jest.fn();
 
 describe('Home Page', () => {
   it('renders the main heading and search bar', () => {
-    // 1. Render the component
-    render(<Page />);
+    render(<Home />);
 
-    // --- THIS IS THE FIX ---
-    // 2. Find an element that we know is on the new page
-    const headingElement = screen.getByRole('heading', {
-      name: /san francisco/i,
+    // 1. Check for the new heading name
+    const heading = screen.getByRole('heading', {
+      name: /nimbus weather/i,
     });
+    expect(heading).toBeInTheDocument();
 
-    // 3. Assert that the heading exists
-    expect(headingElement).toBeInTheDocument();
+    // 2. Check for the search input by its placeholder text
+    const searchInput = screen.getByPlaceholderText(/enter city name/i);
+    expect(searchInput).toBeInTheDocument();
 
-    // 4. Also check that our SearchBar was rendered
-    expect(screen.getByPlaceholderText('Enter city name (e.g., london)')).toBeInTheDocument();
+    // 3. Check for the search button
+    const searchButton = screen.getByRole('button', {
+      name: /search/i,
+    });
+    expect(searchButton).toBeInTheDocument();
   });
 });
