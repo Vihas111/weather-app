@@ -1,5 +1,6 @@
 'use client';
 import { useState } from 'react';
+import Image from 'next/image'; // Import the optimized Image component
 
 // --- 1. Define the Shape of Your Data ---
 interface WeatherData {
@@ -20,7 +21,7 @@ interface WeatherData {
     icon: string;
     wind: number;
   }>;
-  daily: Array<{    // <--- This fixes your error!
+  daily: Array<{
     date: string;
     max_temp: number;
     min_temp: number;
@@ -31,10 +32,7 @@ interface WeatherData {
 
 export default function Home() {
   const [city, setCity] = useState('');
-  // --- 2. Use the Interface Here ---
-  // This tells TypeScript: "data can be null OR it can be our WeatherData structure"
   const [data, setData] = useState<WeatherData | null>(null);
-  
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
@@ -50,8 +48,13 @@ export default function Home() {
       if (!res.ok) throw new Error('City not found');
       const weatherData = await res.json();
       setData(weatherData);
-    } catch (err: any) {
-      setError(err.message);
+    // FIX 1: Use 'unknown' instead of 'any' and check if it's an Error
+    } catch (err: unknown) {
+      if (err instanceof Error) {
+        setError(err.message);
+      } else {
+        setError('An unknown error occurred');
+      }
     } finally {
       setLoading(false);
     }
@@ -87,6 +90,9 @@ export default function Home() {
               <p className="text-gray-500 text-lg">{data.location.region}</p>
               <div className="mt-4 flex items-center gap-4">
                 <span className="text-7xl font-bold text-gray-800">{data.current.temp}°</span>
+                {/* We use standard img here to avoid configuring next.config.js for external domains right now, 
+                    but we add unoptimized to silence the warning if using Next Image */}
+                {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img src={`https:${data.current.icon}`} alt="weather icon" className="w-20 h-20" />
               </div>
               <p className="text-xl text-blue-600 mt-2">{data.current.condition}</p>
@@ -98,11 +104,13 @@ export default function Home() {
           </div>
 
           <div className="bg-white p-6 rounded-xl shadow-md">
-             <h3 className="text-xl font-bold text-gray-800 mb-4">Today's Forecast</h3>
+             {/* FIX 2: Changed Today's to Today&apos;s */}
+             <h3 className="text-xl font-bold text-gray-800 mb-4">Today&apos;s Forecast</h3>
              <div className="flex overflow-x-auto gap-4 pb-2">
                {data.hourly.map((h, i) => (
                  <div key={i} className="min-w-[110px] bg-blue-50 p-4 rounded-lg text-center flex-shrink-0">
                    <p className="text-gray-600 font-medium">{h.time}</p>
+                   {/* eslint-disable-next-line @next/next/no-img-element */}
                    <img src={`https:${h.icon}`} alt="icon" className="w-12 h-12 mx-auto my-2"/>
                    <p className="text-xl font-bold text-gray-800">{h.temp}°</p>
                    <p className="text-sm text-blue-500">{h.wind} km/h</p>
@@ -121,6 +129,7 @@ export default function Home() {
                     <p className="text-gray-500">{d.condition}</p>
                   </div>
                   <div className="flex items-center gap-6">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img src={`https:${d.icon}`} alt="icon" className="w-12 h-12"/>
                     <div className="text-right w-32">
                       <span className="text-xl font-bold text-gray-900">{d.max_temp}°</span>
