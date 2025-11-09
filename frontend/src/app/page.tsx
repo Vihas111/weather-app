@@ -39,7 +39,6 @@ export default function Home() {
   // prefer env var; fallback to localhost:4000
   const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? 'http://127.0.0.1:4000';
 
-
   async function handleSearch(e: React.FormEvent) {
     e.preventDefault();
     if (!city.trim()) return;
