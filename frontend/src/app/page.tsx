@@ -1,6 +1,5 @@
 'use client';
-import { useState } from 'react';
-import Image from 'next/image'; // Import the optimized Image component
+import React, { useState } from 'react';
 
 // --- 1. Define the Shape of Your Data ---
 interface WeatherData {
@@ -28,6 +27,7 @@ interface WeatherData {
     condition: string;
     icon: string;
   }>;
+  backend_duration_ms?: number;
 }
 
 export default function Home() {
@@ -36,25 +36,28 @@ export default function Home() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
+  // prefer env var; fallback to localhost:4000
+  const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? 'http://127.0.0.1:4000';
+
   async function handleSearch(e: React.FormEvent) {
     e.preventDefault();
-    if (!city) return;
+    if (!city.trim()) return;
     setLoading(true);
     setError('');
     setData(null);
 
     try {
-      const res = await fetch(`http://127.0.0.1:8000/weather?city=${city}`);
-      if (!res.ok) throw new Error('City not found');
-      const weatherData = await res.json();
-      setData(weatherData);
-    // FIX 1: Use 'unknown' instead of 'any' and check if it's an Error
-    } catch (err: unknown) {
-      if (err instanceof Error) {
-        setError(err.message);
-      } else {
-        setError('An unknown error occurred');
+      const url = `${API_BASE.replace(/\/$/, '')}/weather?city=${encodeURIComponent(city.trim())}`;
+      const res = await fetch(url);
+      if (!res.ok) {
+        const text = await res.text().catch(() => res.statusText);
+        throw new Error(`API ${res.status}: ${text}`);
       }
+      const weatherData = (await res.json()) as WeatherData;
+      setData(weatherData);
+    } catch (err: unknown) {
+      if (err instanceof Error) setError(err.message);
+      else setError('An unknown error occurred');
     } finally {
       setLoading(false);
     }
@@ -72,9 +75,10 @@ export default function Home() {
             onChange={(e) => setCity(e.target.value)}
             className="flex-1 p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-black"
           />
-          <button 
+          <button
             disabled={loading}
             className="bg-blue-600 text-white px-6 py-3 rounded-lg font-semibold hover:bg-blue-700 disabled:opacity-50"
+            type="submit"
           >
             {loading ? 'Searching...' : 'Search'}
           </button>
@@ -90,33 +94,35 @@ export default function Home() {
               <p className="text-gray-500 text-lg">{data.location.region}</p>
               <div className="mt-4 flex items-center gap-4">
                 <span className="text-7xl font-bold text-gray-800">{data.current.temp}°</span>
-                {/* We use standard img here to avoid configuring next.config.js for external domains right now, 
-                    but we add unoptimized to silence the warning if using Next Image */}
+                {/* using plain img to avoid next/image domain config */}
                 {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={`https:${data.current.icon}`} alt="weather icon" className="w-20 h-20" />
+                <img src={data.current.icon.startsWith('http') ? data.current.icon : `https:${data.current.icon}`} alt="weather icon" className="w-20 h-20" />
               </div>
               <p className="text-xl text-blue-600 mt-2">{data.current.condition}</p>
             </div>
+
             <div className="text-right space-y-3 text-gray-700 text-lg">
               <p>💧 Humidity: <strong>{data.current.humidity}%</strong></p>
               <p>💨 Wind: <strong>{data.current.wind} km/h</strong></p>
+              {typeof data.backend_duration_ms === 'number' && (
+                <p className="text-sm text-gray-500">Backend: <strong>{data.backend_duration_ms} ms</strong></p>
+              )}
             </div>
           </div>
 
           <div className="bg-white p-6 rounded-xl shadow-md">
-             {/* FIX 2: Changed Today's to Today&apos;s */}
-             <h3 className="text-xl font-bold text-gray-800 mb-4">Today&apos;s Forecast</h3>
-             <div className="flex overflow-x-auto gap-4 pb-2">
-               {data.hourly.map((h, i) => (
-                 <div key={i} className="min-w-[110px] bg-blue-50 p-4 rounded-lg text-center flex-shrink-0">
-                   <p className="text-gray-600 font-medium">{h.time}</p>
-                   {/* eslint-disable-next-line @next/next/no-img-element */}
-                   <img src={`https:${h.icon}`} alt="icon" className="w-12 h-12 mx-auto my-2"/>
-                   <p className="text-xl font-bold text-gray-800">{h.temp}°</p>
-                   <p className="text-sm text-blue-500">{h.wind} km/h</p>
-                 </div>
-               ))}
-             </div>
+            <h3 className="text-xl font-bold text-gray-800 mb-4">Today&apos;s Forecast</h3>
+            <div className="flex overflow-x-auto gap-4 pb-2">
+              {data.hourly.map((h, i) => (
+                <div key={i} className="min-w-[110px] bg-blue-50 p-4 rounded-lg text-center shrink-0">
+                  <p className="text-gray-600 font-medium">{h.time}</p>
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={h.icon.startsWith('http') ? h.icon : `https:${h.icon}`} alt="icon" className="w-12 h-12 mx-auto my-2"/>
+                  <p className="text-xl font-bold text-gray-800">{h.temp}°</p>
+                  <p className="text-sm text-blue-500">{h.wind} km/h</p>
+                </div>
+              ))}
+            </div>
           </div>
 
           <div className="bg-white p-6 rounded-xl shadow-md">
@@ -130,7 +136,7 @@ export default function Home() {
                   </div>
                   <div className="flex items-center gap-6">
                     {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src={`https:${d.icon}`} alt="icon" className="w-12 h-12"/>
+                    <img src={d.icon.startsWith('http') ? d.icon : `https:${d.icon}`} alt="icon" className="w-12 h-12"/>
                     <div className="text-right w-32">
                       <span className="text-xl font-bold text-gray-900">{d.max_temp}°</span>
                       <span className="text-gray-400 mx-2">/</span>
@@ -141,8 +147,11 @@ export default function Home() {
               ))}
             </div>
           </div>
-
         </div>
+      )}
+
+      {!data && !loading && (
+        <p className="text-sm text-gray-500 mt-6">Search for a city to view weather details.</p>
       )}
     </div>
   );

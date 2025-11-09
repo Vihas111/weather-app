@@ -5,6 +5,8 @@ from pathlib import Path
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 import cachetools
+import time
+import logging
 
 # --- Setup ---
 SCRIPT_DIR = Path(__file__).parent
@@ -15,14 +17,29 @@ API_KEY = os.getenv("API_KEY")
 
 app = FastAPI()
 
+# --- Response Time Middleware ---
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+@app.middleware("http")
+async def add_process_time_header(request, call_next):
+    start = time.time()
+    response = await call_next(request)
+    duration_ms = int((time.time() - start) * 1000)
+    response.headers["X-Response-Time-ms"] = str(duration_ms)
+    logger.info(f"{request.method} {request.url.path} - {duration_ms}ms")
+    return response
+
+
 # --- CORS (Allows frontend to talk to backend) ---
 app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["http://localhost:3000"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+  CORSMiddleware,
+  allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
+  allow_credentials=True,
+  allow_methods=["*"],
+  allow_headers=["*"],
 )
+
 
 # --- Cache (15 minutes) ---
 api_cache = cachetools.TTLCache(maxsize=100, ttl=900)
@@ -38,6 +55,7 @@ def get_weather_from_api(city: str):
 
 @app.get("/weather")
 def weather_endpoint(city: str = Query(..., min_length=1)):
+    start = time.time()
     raw = get_weather_from_api(city)
     
     # Process Hourly Data (only future hours for today)
@@ -65,6 +83,8 @@ def weather_endpoint(city: str = Query(..., min_length=1)):
         for d in raw['forecast']['forecastday']
     ]
 
+    duration_ms = int((time.time() - start) * 1000)
+
     return {
         "location": {"city": raw['location']['name'], "region": raw['location']['region']},
         "current": {
@@ -75,8 +95,10 @@ def weather_endpoint(city: str = Query(..., min_length=1)):
             "wind": raw['current']['wind_kph']
         },
         "hourly": hourly,
-        "daily": daily
+        "daily": daily,
+        "backend_duration_ms": duration_ms
     }
+
 
 # Add this to the bottom of backend/main.py
 @app.get("/")
