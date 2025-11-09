@@ -63,7 +63,7 @@ export default function WeatherApp() {
   }, []); // empty deps => run once on mount
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-blue-100">
+    <div className="min-h-screen bg-linear-to-br from-blue-50 to-blue-100">
       <header className="bg-white shadow-sm">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex items-center justify-between">
           <div className="flex items-center space-x-3">
@@ -151,7 +151,7 @@ export default function WeatherApp() {
               <h3 className="text-xl font-bold text-gray-800 mb-4">Today&apos;s Forecast</h3>
               <div className="flex overflow-x-auto gap-4 pb-2">
                 {data.hourly.map((h, i) => (
-                  <div key={i} className="min-w-[110px] bg-blue-50 p-4 rounded-lg text-center flex-shrink-0">
+                  <div key={i} className="min-w-[110px] bg-blue-50 p-4 rounded-lg text-center shrink-0">
                     <p className="text-gray-600 font-medium">{h.time}</p>
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img src={`https:${h.icon}`} alt="icon" className="w-12 h-12 mx-auto my-2" />

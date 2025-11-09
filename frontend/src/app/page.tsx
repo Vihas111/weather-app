@@ -114,7 +114,7 @@ export default function Home() {
             <h3 className="text-xl font-bold text-gray-800 mb-4">Today&apos;s Forecast</h3>
             <div className="flex overflow-x-auto gap-4 pb-2">
               {data.hourly.map((h, i) => (
-                <div key={i} className="min-w-[110px] bg-blue-50 p-4 rounded-lg text-center flex-shrink-0">
+                <div key={i} className="min-w-[110px] bg-blue-50 p-4 rounded-lg text-center shrink-0">
                   <p className="text-gray-600 font-medium">{h.time}</p>
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img src={h.icon.startsWith('http') ? h.icon : `https:${h.icon}`} alt="icon" className="w-12 h-12 mx-auto my-2"/>
