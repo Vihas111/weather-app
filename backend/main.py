@@ -17,6 +17,9 @@ API_KEY = os.getenv("API_KEY")
 
 app = FastAPI()
 
+# ---- track server start time for uptime reporting ----
+SERVER_START_TS = time.time()
+
 # --- Response Time Middleware ---
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -39,6 +42,7 @@ app.add_middleware(
   allow_methods=["*"],
   allow_headers=["*"],
 )
+
 
 
 # --- Cache (15 minutes) ---
@@ -97,6 +101,19 @@ def weather_endpoint(city: str = Query(..., min_length=1)):
         "hourly": hourly,
         "daily": daily,
         "backend_duration_ms": duration_ms
+    }
+
+@app.get("/health")
+def health_check():
+    """
+    Simple health endpoint for monitoring.
+    Returns status + uptime (seconds) and current timestamp.
+    """
+    uptime_sec = int(time.time() - SERVER_START_TS)
+    return {
+        "status": "ok",
+        "uptime_seconds": uptime_sec,
+        "timestamp": int(time.time())
     }
 
 
