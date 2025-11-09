@@ -1,51 +1,62 @@
-# Name of your workflow (shows up in the "Actions" tab on GitHub)
 name: Python CI Backend Tests
 
-# When this workflow should run
 on:
-  # Run on every push to your main/master branch
   push:
     branches: [ "main", "master" ]
-  # Also run on every pull request
   pull_request:
     branches: [ "main", "master" ]
 
-# The list of jobs to do
 jobs:
-  # We only have one job, called "test-backend"
   test-backend:
-    # Use the latest version of Ubuntu (a Linux OS) to run the job
     runs-on: ubuntu-latest
 
     steps:
-      # 1. Checks out your repository code so the job can use it
       - name: Check out code
         uses: actions/checkout@v4
 
-      # 2. Sets up the Python programming language
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
-          python-version: '3.10' # You can change this to 3.11, etc.
+          python-version: '3.10'
 
-      # 3. Installs all your project's libraries from requirements.txt
-      - name: Install dependencies
+      - name: Install dependencies (backend)
+        working-directory: backend
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt
-      
-      # 4. Creates the .env file with your API key
-      #    This is a SUPER important step!
-      - name: Create .env file
+          # Install project deps (assumes backend/requirements.txt exists)
+          if [ -f requirements.txt ]; then
+            pip install -r requirements.txt
+          fi
+          # Ensure test tools are available
+          pip install uvicorn[standard] pytest requests
+
+      - name: Create backend .env from secret
+        working-directory: backend
         run: |
+          # Use the pipeline secret name you have set in repo (WEATHER_API_KEY)
           echo "API_KEY=${{ secrets.WEATHER_API_KEY }}" > .env
 
-      # 5. Runs your FastAPI server in the background
-      - name: Run server in background
+      - name: Start backend (uvicorn) in background
+        working-directory: backend
         run: |
-          uvicorn src.main:app --host 0.0.0.0 --port 8000 &
-          sleep 10 # Give the server 10 seconds to start up
+          # start uvicorn in background and capture logs
+          nohup python -m uvicorn backend.main:app --host 0.0.0.0 --port 8000 > uvicorn.log 2>&1 &
+          # wait until server responds on / (timeout ~30s)
+          for i in $(seq 1 30); do
+            if curl -sSf http://127.0.0.1:8000/ >/dev/null 2>&1; then
+              echo "Backend is up"
+              break
+            fi
+            echo "Waiting for backend... ($i)"
+            sleep 1
+          done
+          # show last server logs for debugging
+          tail -n +1 uvicorn.log || true
 
-      # 6. Runs your test file (test_main.py)
-      - name: Run tests with pytest
-        run: pytest
+      - name: Run backend tests
+        working-directory: backend
+        env:
+          # ensure tests can access secrets if needed
+          API_KEY: ${{ secrets.WEATHER_API_KEY }}
+        run: |
+          pytest -q
