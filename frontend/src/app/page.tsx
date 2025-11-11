@@ -1,5 +1,6 @@
 'use client';
 import React, { useState } from 'react';
+import Link from 'next/link';
 
 // --- 1. Define the Shape of Your Data ---
 interface WeatherData {
@@ -36,8 +37,8 @@ export default function Home() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
-  // prefer env var; fallback to localhost:4000
-  const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? 'http://127.0.0.1:4000';
+  // Use env var; fallback to localhost:8000
+  const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? 'http://127.0.0.1:8000';
 
   async function handleSearch(e: React.FormEvent) {
     e.preventDefault();
@@ -65,8 +66,19 @@ export default function Home() {
 
   return (
     <div className="min-h-screen bg-gray-100 p-8 flex flex-col items-center">
+      
+      {/* SECTION 1: THE TOP CARD */}
       <div className="w-full max-w-3xl bg-white rounded-xl shadow-lg p-6 mb-8">
-        <h1 className="text-3xl font-bold text-gray-800 mb-4">Nimbus Weather</h1>
+        
+        {/* Header Row: Title on Left, Icon on Right */}
+        <div className="flex justify-between items-center mb-4">
+          <h1 className="text-3xl font-bold text-gray-800">Nimbus Weather</h1>
+          <Link href="/settings" className="text-gray-500 hover:text-blue-600 transition-colors" title="Alert Settings">
+            <span className="text-3xl">⚙️</span>
+          </Link>
+        </div>
+        
+        {/* Search Form */}
         <form onSubmit={handleSearch} className="flex gap-4">
           <input
             type="text"
@@ -83,24 +95,27 @@ export default function Home() {
             {loading ? 'Searching...' : 'Search'}
           </button>
         </form>
+        
+        {/* Error Message */}
         {error && <p className="text-red-500 mt-4 font-medium">{error}</p>}
       </div>
-
+      
+      {/* SECTION 2: THE DATA DISPLAY BLOCK */}
       {data && (
         <div className="w-full max-w-3xl space-y-6">
+          
+          {/* Current Weather Card */}
           <div className="bg-white p-8 rounded-xl shadow-md flex justify-between items-center">
             <div>
               <h2 className="text-4xl font-bold text-gray-900">{data.location.city}</h2>
               <p className="text-gray-500 text-lg">{data.location.region}</p>
               <div className="mt-4 flex items-center gap-4">
                 <span className="text-7xl font-bold text-gray-800">{data.current.temp}°</span>
-                {/* using plain img to avoid next/image domain config */}
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img src={data.current.icon.startsWith('http') ? data.current.icon : `https:${data.current.icon}`} alt="weather icon" className="w-20 h-20" />
               </div>
               <p className="text-xl text-blue-600 mt-2">{data.current.condition}</p>
             </div>
-
             <div className="text-right space-y-3 text-gray-700 text-lg">
               <p>💧 Humidity: <strong>{data.current.humidity}%</strong></p>
               <p>💨 Wind: <strong>{data.current.wind} km/h</strong></p>
@@ -110,11 +125,12 @@ export default function Home() {
             </div>
           </div>
 
+          {/* Today's Forecast Card */}
           <div className="bg-white p-6 rounded-xl shadow-md">
             <h3 className="text-xl font-bold text-gray-800 mb-4">Today&apos;s Forecast</h3>
             <div className="flex overflow-x-auto gap-4 pb-2">
-              {data.hourly.map((h, i) => (
-                <div key={i} className="min-w-[110px] bg-blue-50 p-4 rounded-lg text-center shrink-0">
+              {data.hourly.map((h) => (
+                <div key={h.time} className="min-w-[110px] bg-blue-50 p-4 rounded-lg text-center shrink-0">
                   <p className="text-gray-600 font-medium">{h.time}</p>
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img src={h.icon.startsWith('http') ? h.icon : `https:${h.icon}`} alt="icon" className="w-12 h-12 mx-auto my-2"/>
@@ -125,11 +141,12 @@ export default function Home() {
             </div>
           </div>
 
+          {/* 3-Day Forecast Card */}
           <div className="bg-white p-6 rounded-xl shadow-md">
             <h3 className="text-xl font-bold text-gray-800 mb-4">3-Day Forecast</h3>
             <div className="divide-y divide-gray-100">
-              {data.daily.map((d, i) => (
-                <div key={i} className="flex items-center justify-between py-4">
+              {data.daily.map((d) => (
+                <div key={d.date} className="flex items-center justify-between py-4">
                   <div>
                     <p className="font-bold text-gray-900 text-lg">{d.date}</p>
                     <p className="text-gray-500">{d.condition}</p>
@@ -150,6 +167,7 @@ export default function Home() {
         </div>
       )}
 
+      {/* SECTION 3: THE "EMPTY STATE" PROMPT */}
       {!data && !loading && (
         <p className="text-sm text-gray-500 mt-6">Search for a city to view weather details.</p>
       )}

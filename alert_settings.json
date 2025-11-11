@@ -1,0 +1,26 @@
+[
+    {
+        "city": "singapore",
+        "max_temp": 40.0,
+        "min_temp": 25.0,
+        "max_wind_kph": 1.0
+    },
+    {
+        "city": "bangalore",
+        "max_temp": 20.0,
+        "min_temp": 15.0,
+        "max_wind_kph": 30.0
+    },
+    {
+        "city": "london",
+        "max_temp": 20.0,
+        "min_temp": 15.0,
+        "max_wind_kph": 50.0
+    },
+    {
+        "city": "sao paulo",
+        "max_temp": 35.0,
+        "min_temp": 24.0,
+        "max_wind_kph": 60.0
+    }
+]
