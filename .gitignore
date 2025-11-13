@@ -1,0 +1,24 @@
+# Python virtual environment
+.venv
+venv/
+env/
+
+# Python cache
+__pycache__/
+*.pyc
+
+# Test coverage
+coverage/
+.coverage
+
+# Generated cache file
+cache.json
+
+# VS Code
+.vscode/
+
+# System files
+.DS_Store
+
+# Random executables
+*.exe
