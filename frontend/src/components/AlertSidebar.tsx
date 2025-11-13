@@ -29,7 +29,7 @@ export default function AlertSidebar() {
     };
 
     fetchAlerts();
-    const interval = setInterval(fetchAlerts, 1000);
+    const interval = setInterval(fetchAlerts, 1500);
     return () => clearInterval(interval);
   }, []);
 
@@ -64,9 +64,9 @@ export default function AlertSidebar() {
       {!alert || !alert.active ? (
         <p style={{ color: "#4caf50" }}>No extreme weather alerts 😊</p>
       ) : (
-        alert.breaches.map((entry, idx) => (
+        alert.breaches.map((entry) => (
           <div
-            key={idx}
+            key={entry.city}
             style={{
               marginBottom: "14px",
               padding: "10px",
@@ -80,9 +80,9 @@ export default function AlertSidebar() {
             </strong>
 
             <ul style={{ marginTop: "6px", paddingLeft: "20px" }}>
-              {entry.breaches.map((b, j) => (
-                <li key={j} style={{ marginBottom: "4px", color: "#333" }}>
-                  {b}
+              {entry.breaches.map((breach) => (
+                <li key={breach} style={{ marginBottom: "4px", color: "#333" }}>
+                  {breach}
                 </li>
               ))}
             </ul>
