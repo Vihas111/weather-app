@@ -1,14 +1,14 @@
 [
-    {
-        "city": "london",
-        "max_temp": 35.0,
-        "min_temp": 0.0,
-        "max_wind_kph": 60.0
-    },
-    {
-        "city": "Bangalore",
-        "max_temp": 30.0,
-        "min_temp": 0.0,
-        "max_wind_kph": 50.0
-    }
+  {
+    "city": "Bangalore",
+    "max_temp": 1.0,
+    "min_temp": 0.0,
+    "max_wind_kph": 1.0
+  },
+  {
+    "city": "London",
+    "max_temp": 2.0,
+    "min_temp": 1.0,
+    "max_wind_kph": 10.0
+  }
 ]
