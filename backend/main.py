@@ -74,8 +74,19 @@ def read_all_settings() -> List[CityAlertSetting]:
 
 
 def write_all_settings(settings: List[CityAlertSetting]):
+    def serialize(obj):
+        # Pydantic v2
+        if hasattr(obj, "model_dump"):
+            return obj.model_dump()
+        # Pydantic v1 fallback
+        if hasattr(obj, "dict"):
+            return obj.dict()
+        # Ultimate fallback
+        return obj.__dict__
+
     with open(SETTINGS_FILE, "w") as f:
-        json.dump([s.model_dump() for s in settings], f, indent=4)
+        json.dump([serialize(s) for s in settings], f, indent=4)
+
 
 # ----------- SETTINGS ENDPOINTS -----------
 
