@@ -41,29 +41,35 @@ export default function WeatherApp() {
   const API_BASE =
     process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:4000";
 
-  const fetchWeather = useCallback(async (forCity: string) => {
-    setLoading(true);
-    setError(null);
-    setData(null);
-    try {
-      const url = `${API_BASE.replace(
-        /\/$/,
-        ""
-      )}/weather?city=${encodeURIComponent(forCity)}`;
-      const res = await fetch(url);
-      if (!res.ok) {
-        const text = await res.text();
-        throw new Error(`API ${res.status} ${res.statusText}: ${text}`);
+  const fetchWeather = useCallback(
+    async (forCity: string) => {
+      setLoading(true);
+      setError(null);
+      setData(null);
+
+      try {
+        const url = `${API_BASE.replace(
+          /\/$/,
+          ""
+        )}/weather?city=${encodeURIComponent(forCity)}`;
+
+        const res = await fetch(url);
+        if (!res.ok) {
+          const text = await res.text();
+          throw new Error(`API ${res.status} ${res.statusText}: ${text}`);
+        }
+
+        const json: WeatherData = await res.json();
+        setData(json);
+      } catch (err) {
+        if (err instanceof Error) setError(err.message);
+        else setError("Unknown error");
+      } finally {
+        setLoading(false);
       }
-      const json: WeatherData = await res.json();
-      setData(json);
-    } catch (err) {
-      if (err instanceof Error) setError(err.message);
-      else setError("Unknown error");
-    } finally {
-      setLoading(false);
-    }
-  }, [API_BASE]);
+    },
+    [API_BASE]
+  );
 
   useEffect(() => {
     fetchWeather(city);
@@ -71,6 +77,7 @@ export default function WeatherApp() {
 
   return (
     <div className="min-h-screen bg-linear-to-br from-blue-50 to-blue-100">
+      {/* HEADER */}
       <header className="bg-white shadow-sm">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex items-center justify-between">
           <div className="flex items-center space-x-3">
@@ -104,6 +111,7 @@ export default function WeatherApp() {
         </div>
       </header>
 
+      {/* MAIN */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {error && (
           <div className="bg-red-50 border border-red-200 text-red-700 p-4 rounded mb-6">
@@ -113,6 +121,7 @@ export default function WeatherApp() {
 
         {data && (
           <div className="space-y-6">
+            {/* TOP CARD */}
             <div className="bg-white p-8 rounded-xl shadow-md">
               <h2 className="text-4xl font-bold text-gray-900">
                 {data.location.city}
@@ -120,10 +129,69 @@ export default function WeatherApp() {
               <p className="text-gray-500 text-lg">{data.location.region}</p>
             </div>
 
+            {/* HOURLY */}
             <div className="bg-white p-6 rounded-xl shadow-md">
               <h3 className="text-xl font-bold text-gray-800 mb-4">
-                Today's Forecast
+                Today&apos;s Forecast
               </h3>
+              <div className="flex overflow-x-auto gap-4 pb-2">
+                {data.hourly.map((h) => (
+                  <div
+                    key={h.time}
+                    className="min-w-[110px] bg-blue-50 p-4 rounded-lg text-center"
+                  >
+                    <p className="text-gray-600 font-medium">{h.time}</p>
+                    <img
+                      src={`https:${h.icon}`}
+                      alt="icon"
+                      className="w-12 h-12 mx-auto my-2"
+                    />
+                    <p className="text-xl font-bold text-gray-800">
+                      {h.temp}°
+                    </p>
+                    <p className="text-sm text-blue-500">{h.wind} km/h</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* DAILY */}
+            <div className="bg-white p-6 rounded-xl shadow-md">
+              <h3 className="text-xl font-bold text-gray-800 mb-4">
+                3-Day Forecast
+              </h3>
+              <div className="divide-y divide-gray-100">
+                {data.daily.map((d) => (
+                  <div
+                    key={d.date}
+                    className="flex items-center justify-between py-4"
+                  >
+                    <div>
+                      <p className="font-bold text-gray-900 text-lg">
+                        {d.date}
+                      </p>
+                      <p className="text-gray-500">{d.condition}</p>
+                    </div>
+
+                    <div className="flex items-center gap-6">
+                      <img
+                        src={`https:${d.icon}`}
+                        alt="icon"
+                        className="w-12 h-12"
+                      />
+                      <div className="text-right w-32">
+                        <span className="text-xl font-bold text-gray-900">
+                          {d.max_temp}°
+                        </span>
+                        <span className="text-gray-400 mx-2">/</span>
+                        <span className="text-xl text-gray-500">
+                          {d.min_temp}°
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
         )}
