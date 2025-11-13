@@ -3,12 +3,13 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
-    "start": "next start",
-    "build": "next build",
-    "lint": "eslint .",
-    "test": "jest --watchAll=false --coverage"
-  },
+  "dev": "next dev",
+  "build": "next build",
+  "start": "next start",
+  "lint": "eslint .",
+  "test": "jest --watchAll=false --coverage",
+  "test:coverage": "jest --coverage"
+},
   "dependencies": {
     "chart.js": "^4.5.1",
     "lucide-react": "^0.552.0",
