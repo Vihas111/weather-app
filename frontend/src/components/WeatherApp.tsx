@@ -1,5 +1,6 @@
 "use client";
 
+import WeatherCharts from "./WeatherCharts";
 import React, { useState, useEffect, useCallback } from "react";
 import { Cloud } from "lucide-react";
 
@@ -39,7 +40,12 @@ export default function WeatherApp() {
   const [error, setError] = useState<string | null>(null);
 
   const API_BASE =
-    process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:4000";
+    process.env.NEXT_PUBLIC_API_BASE ?? "http://127.0.0.1:8000";
+
+  // 🔵 Debug: Check API Base in browser console
+  useEffect(() => {
+    console.log("API BASE =", API_BASE);
+  }, []);
 
   const fetchWeather = useCallback(
     async (forCity: string) => {
@@ -53,6 +59,8 @@ export default function WeatherApp() {
           ""
         )}/weather?city=${encodeURIComponent(forCity)}`;
 
+        console.log("Fetching weather from:", url);
+
         const res = await fetch(url);
         if (!res.ok) {
           const text = await res.text();
@@ -60,6 +68,7 @@ export default function WeatherApp() {
         }
 
         const json: WeatherData = await res.json();
+        console.log("Weather data loaded:", json);
         setData(json);
       } catch (err) {
         if (err instanceof Error) setError(err.message);
@@ -193,6 +202,9 @@ export default function WeatherApp() {
                 ))}
               </div>
             </div>
+
+            {/* 📊 CHARTS SECTION */}
+            <WeatherCharts hourly={data.hourly} daily={data.daily} />
           </div>
         )}
       </main>
