@@ -1,82 +1,42 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import React from "react";
 
-export default function AlertSidebar() {
-  const [alert, setAlert] = useState<any>(null);
+type BreachEntry = {
+  city: string;
+  breaches: string[];
+};
 
-  useEffect(() => {
-    const fetchAlerts = async () => {
-      try {
-        const res = await fetch("http://127.0.0.1:8000/alerts/status");
-        const data = await res.json();
-        setAlert(data);
-      } catch (err) {
-        console.log("Alert fetch failed:", err);
-      }
-    };
+type AlertData = {
+  active: boolean;
+  breaches: BreachEntry[];
+};
 
-    fetchAlerts();
-    const interval = setInterval(fetchAlerts, 1000);
-    return () => clearInterval(interval);
-  }, []);
+export default function AlertSidebar({ alertData }: { alertData: AlertData | null }) {
+  if (!alertData || !alertData.active || alertData.breaches.length === 0) {
+    return (
+      <div className="fixed left-4 top-24 w-72 bg-white shadow-md rounded-lg p-4 border border-gray-200">
+        <h2 className="font-bold text-lg">⚠️ Extreme Alerts</h2>
+        <p className="text-gray-500 text-sm mt-2">No active alerts</p>
+      </div>
+    );
+  }
 
   return (
-    <div
-        style={{
-            position: "fixed",
-            top: "80px",
-            left: "20px",   // ⬅️ CHANGED (was right: "20px")
-            width: "320px",
-            maxHeight: "70vh",
-            overflowY: "auto",
-            background: "#ffffff",
-            borderRadius: "12px",
-            padding: "16px",
-            boxShadow: "0 4px 18px rgba(0,0,0,0.18)",
-            zIndex: 9999,
-            border: "2px solid #ffcccc",
-        }}
-    >
+    <div className="fixed left-4 top-24 w-72 max-h-[80vh] overflow-y-auto bg-red-50 border border-red-300 shadow-md rounded-lg p-4">
+      <h2 className="font-bold text-lg text-red-700">⚠️ Extreme Alerts</h2>
 
-      <h2
-        style={{
-          margin: "0 0 10px 0",
-          fontSize: "20px",
-          fontWeight: "700",
-          color: "#d32f2f",
-        }}
-      >
-        ⚠️ Extreme Alerts
-      </h2>
+      {alertData.breaches.map((entry: BreachEntry, i: number) => (
+        <div key={i} className="mt-4 bg-red-100 border border-red-300 rounded p-3">
+          <p className="font-semibold text-red-700">{entry.city}</p>
 
-      {!alert || !alert.active ? (
-        <p style={{ color: "#4caf50" }}>No extreme weather alerts 😊</p>
-      ) : (
-        alert.breaches.map((entry: any, idx: number) => (
-          <div
-            key={idx}
-            style={{
-              marginBottom: "14px",
-              padding: "10px",
-              borderRadius: "8px",
-              background: "#ffe8e8",
-              border: "1px solid #ffb3b3",
-            }}
-          >
-            <strong style={{ fontSize: "16px", color: "#b71c1c" }}>
-              {entry.city}
-            </strong>
-            <ul style={{ marginTop: "6px", paddingLeft: "20px" }}>
-              {entry.breaches.map((b: string, j: number) => (
-                <li key={j} style={{ marginBottom: "4px", color: "#333" }}>
-                  {b}
-                </li>
-              ))}
-            </ul>
-          </div>
-        ))
-      )}
+          {entry.breaches.map((b, idx) => (
+            <p key={idx} className="text-sm text-red-800">
+              {b}
+            </p>
+          ))}
+        </div>
+      ))}
     </div>
   );
 }
