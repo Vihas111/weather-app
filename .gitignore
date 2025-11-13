@@ -1,24 +1,32 @@
-# Python virtual environment
-.venv
-venv/
-env/
+# Node
+node_modules/
+.next/
+dist/
 
-# Python cache
+# Python
 __pycache__/
 *.pyc
 
-# Test coverage
-coverage/
-.coverage
+# Virtual env
+venv/
+backend/venv/
 
-# Generated cache file
-cache.json
+# Environment
+.env
+.env.local
+.env.*.local
 
-# VS Code
-.vscode/
+# Build outputs
+build/
+out/
 
-# System files
+# OS/system files
 .DS_Store
+Thumbs.db
 
-# Random executables
-*.exe
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
