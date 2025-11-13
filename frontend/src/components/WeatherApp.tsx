@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { Cloud } from "lucide-react";
 
 type Hour = {
@@ -38,42 +38,41 @@ export default function WeatherApp() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // API base
-  const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:4000";
+  const API_BASE =
+    process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:4000";
 
-  // Fetch weather data
-  async function fetchWeather(forCity: string) {
-    setLoading(true);
-    setError(null);
-    setData(null);
+  const fetchWeather = useCallback(
+    async (forCity: string) => {
+      setLoading(true);
+      setError(null);
+      setData(null);
 
-    try {
-      const url = `${API_BASE.replace(/\/$/, "")}/weather?city=${encodeURIComponent(
-        forCity
-      )}`;
+      try {
+        const url = `${API_BASE.replace(/\/$/, "")}/weather?city=${encodeURIComponent(
+          forCity
+        )}`;
 
-      const res = await fetch(url);
+        const res = await fetch(url);
+        if (!res.ok) {
+          const text = await res.text();
+          throw new Error(`API ${res.status}: ${text}`);
+        }
 
-      if (!res.ok) {
-        const text = await res.text();
-        throw new Error(`API ${res.status}: ${text}`);
+        const json: WeatherData = await res.json();
+        setData(json);
+      } catch (err: unknown) {
+        if (err instanceof Error) setError(err.message);
+        else setError("Unknown error");
+      } finally {
+        setLoading(false);
       }
+    },
+    [API_BASE]
+  );
 
-      const json: WeatherData = await res.json();
-      setData(json);
-    } catch (err) {
-      if (err instanceof Error) setError(err.message);
-      else setError("Unknown error");
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  // Initial fetch
   useEffect(() => {
     fetchWeather(city);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [city, fetchWeather]);
 
   return (
     <div className="min-h-screen bg-linear-to-br from-blue-50 to-blue-100">
@@ -112,7 +111,6 @@ export default function WeatherApp() {
       </header>
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* EMPTY STATE */}
         {!data && !error && !loading && (
           <div className="bg-white rounded-lg shadow-sm p-8">
             <div className="text-center py-12">
@@ -120,13 +118,12 @@ export default function WeatherApp() {
                 Weather App
               </h3>
               <p className="text-gray-600">
-                Search a city and view current, hourly, and 3-day forecast.
+                Search a city and view current, hourly and 3-day forecast.
               </p>
             </div>
           </div>
         )}
 
-        {/* ERROR */}
         {error && (
           <div className="max-w-3xl mx-auto mb-6">
             <div className="bg-red-50 border border-red-200 text-red-700 p-4 rounded">
@@ -135,23 +132,23 @@ export default function WeatherApp() {
           </div>
         )}
 
-        {/* WEATHER RESULTS */}
         {data && (
           <div className="space-y-6">
-            {/* TOP CARD */}
+            {/* Top card */}
             <div className="bg-white p-8 rounded-xl shadow-md flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
               <div>
                 <h2 className="text-4xl font-bold text-gray-900">
                   {data.location.city}
                 </h2>
-                <p className="text-gray-500 text-lg">{data.location.region}</p>
+                <p className="text-gray-500 text-lg">
+                  {data.location.region}
+                </p>
 
                 <div className="mt-4 flex items-center gap-6">
                   <div className="flex items-center gap-4">
                     <span className="text-6xl font-bold text-gray-800">
                       {data.current.temp}°
                     </span>
-
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img
                       src={`https:${data.current.icon}`}
@@ -159,7 +156,6 @@ export default function WeatherApp() {
                       className="w-20 h-20"
                     />
                   </div>
-
                   <div>
                     <p className="text-xl text-blue-600 mt-2">
                       {data.current.condition}
@@ -170,7 +166,6 @@ export default function WeatherApp() {
                     <p className="text-sm text-gray-600">
                       Wind: {data.current.wind} km/h
                     </p>
-
                     {typeof data.backend_duration_ms === "number" && (
                       <p className="text-xs text-gray-500 mt-2">
                         Backend:{" "}
@@ -189,12 +184,11 @@ export default function WeatherApp() {
               </div>
             </div>
 
-            {/* HOURLY */}
+            {/* Hourly */}
             <div className="bg-white p-6 rounded-xl shadow-md">
               <h3 className="text-xl font-bold text-gray-800 mb-4">
-                Today's Forecast
+                Today&apos;s Forecast
               </h3>
-
               <div className="flex overflow-x-auto gap-4 pb-2">
                 {data.hourly.map((h, i) => (
                   <div
@@ -202,14 +196,12 @@ export default function WeatherApp() {
                     className="min-w-[110px] bg-blue-50 p-4 rounded-lg text-center shrink-0"
                   >
                     <p className="text-gray-600 font-medium">{h.time}</p>
-
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img
                       src={`https:${h.icon}`}
                       alt="icon"
                       className="w-12 h-12 mx-auto my-2"
                     />
-
                     <p className="text-xl font-bold text-gray-800">
                       {h.temp}°
                     </p>
@@ -219,22 +211,23 @@ export default function WeatherApp() {
               </div>
             </div>
 
-            {/* DAILY */}
+            {/* Daily */}
             <div className="bg-white p-6 rounded-xl shadow-md">
               <h3 className="text-xl font-bold text-gray-800 mb-4">
                 3-Day Forecast
               </h3>
-
               <div className="divide-y divide-gray-100">
                 {data.daily.map((d, i) => (
-                  <div key={i} className="flex items-center justify-between py-4">
+                  <div
+                    key={i}
+                    className="flex items-center justify-between py-4"
+                  >
                     <div>
                       <p className="font-bold text-gray-900 text-lg">
                         {d.date}
                       </p>
                       <p className="text-gray-500">{d.condition}</p>
                     </div>
-
                     <div className="flex items-center gap-6">
                       {/* eslint-disable-next-line @next/next/no-img-element */}
                       <img
@@ -242,7 +235,6 @@ export default function WeatherApp() {
                         alt="icon"
                         className="w-12 h-12"
                       />
-
                       <div className="text-right w-32">
                         <span className="text-xl font-bold text-gray-900">
                           {d.max_temp}°
@@ -257,7 +249,6 @@ export default function WeatherApp() {
                 ))}
               </div>
             </div>
-
           </div>
         )}
       </main>
