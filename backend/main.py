@@ -13,7 +13,7 @@ from typing import Optional, List, Dict
 import asyncio
 
 # Import alerts logic
-from alert_monitor import load_settings, check_weather_thresholds
+from .alert_monitor import load_settings, check_weather_thresholds
 
 # --- Setup ---
 SCRIPT_DIR = Path(__file__).parent
