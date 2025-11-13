@@ -5,6 +5,7 @@ import "@/app/globals.css";
 import HealthAlert from "@/components/HealthAlert";
 import AlertSidebar from "@/components/AlertSidebar";
 
+
 const geistSans = Geist({
   variable: "--font-geist-sans",
   subsets: ["latin"],

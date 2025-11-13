@@ -1,18 +1,20 @@
-import requests
+# backend/main.py
 import os
-from dotenv import load_dotenv
+import time
+import json
+import logging
+import asyncio
 from pathlib import Path
+from typing import List, Optional, Dict, Any
+
+import requests
+import cachetools
+from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
-import cachetools
-import time
-import logging
-import json
 from pydantic import BaseModel
-from typing import Optional, List, Dict
-import asyncio
 
-# Import alerts logic
+# Import alerts logic from alert_monitor.py
 from .alert_monitor import load_settings, check_weather_thresholds
 
 # --- Setup ---
@@ -20,44 +22,72 @@ SCRIPT_DIR = Path(__file__).parent
 ROOT_DIR = SCRIPT_DIR.parent
 ENV_PATH = ROOT_DIR / ".env"
 load_dotenv(dotenv_path=ENV_PATH)
+
 API_KEY = os.getenv("API_KEY")
+if not API_KEY:
+    logging.warning("No API_KEY found in environment. External weather calls will fail.")
 
-app = FastAPI()
+# App
+app = FastAPI(title="Nimbus Weather Backend")
 
-# ---- Server uptime tracking ----
+# Server uptime
 SERVER_START_TS = time.time()
 
-# ----------- ALERT STATE (GLOBAL) -----------
-ALERT_STATUS = {"active": False, "breaches": []}
+# Global alert state
+ALERT_STATUS: Dict[str, Any] = {"active": False, "breaches": []}
 
-# ----------- CORS -----------
+# CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["*"],  # restrict in production
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# ----------- Weather Cache -----------
-api_cache = cachetools.TTLCache(maxsize=100, ttl=900)
+# Cache (15 minutes)
+api_cache = cachetools.TTLCache(maxsize=200, ttl=900)
+
 
 @cachetools.cached(api_cache)
-def get_weather_from_api(city: str):
+def get_weather_from_api(city: str) -> dict:
+    """
+    Query WeatherAPI and return parsed JSON.
+    Now detects invalid city and returns 404.
+    """
+    if not API_KEY:
+        raise HTTPException(
+            status_code=500, detail="Weather API key is not configured on the server."
+        )
+
     url = "https://api.weatherapi.com/v1/forecast.json"
     params = {"key": API_KEY, "q": city, "days": 3, "aqi": "no"}
-    response = requests.get(url, params=params)
-    if response.status_code != 200:
-        raise HTTPException(status_code=response.status_code, detail=response.text)
-    return response.json()
 
-# ----------- CITY ALERT SETTINGS MODEL -----------
+    resp = requests.get(url, params=params, timeout=10)
 
+    # If WeatherAPI returns non-200
+    if resp.status_code != 200:
+        raise HTTPException(status_code=resp.status_code, detail=resp.text)
+
+    try:
+        data = resp.json()
+    except ValueError:
+        raise HTTPException(status_code=502, detail="Invalid JSON from weather provider")
+
+    # 🚨 Story 1.4 — detect invalid city
+    if "error" in data:
+        raise HTTPException(status_code=404, detail="City not found")
+
+    return data
+
+
+# ---------------- City Alert Settings ----------------
 class CityAlertSetting(BaseModel):
     city: str
     max_temp: Optional[float] = None
     min_temp: Optional[float] = None
     max_wind_kph: Optional[float] = None
+
 
 SETTINGS_FILE = ROOT_DIR / "alert_settings.json"
 
@@ -66,41 +96,42 @@ def read_all_settings() -> List[CityAlertSetting]:
     if not SETTINGS_FILE.exists():
         return []
     try:
-        with open(SETTINGS_FILE, "r") as f:
-            data = json.load(f)
-            return [CityAlertSetting(**item) for item in data]
-    except:
+        with open(SETTINGS_FILE, "r", encoding="utf-8") as f:
+            raw = json.load(f)
+            if not isinstance(raw, list):
+                return []
+            return [CityAlertSetting(**item) for item in raw]
+    except Exception:
+        logging.exception("Failed to read settings file")
         return []
 
 
-def write_all_settings(settings: List[CityAlertSetting]):
-    def serialize(obj):
-        # Pydantic v2
+def write_all_settings(settings: List[CityAlertSetting]) -> None:
+    def serialize(obj: CityAlertSetting):
         if hasattr(obj, "model_dump"):
             return obj.model_dump()
-        # Pydantic v1 fallback
         if hasattr(obj, "dict"):
             return obj.dict()
-        # Ultimate fallback
         return obj.__dict__
 
-    with open(SETTINGS_FILE, "w") as f:
-        json.dump([serialize(s) for s in settings], f, indent=4)
+    with open(SETTINGS_FILE, "w", encoding="utf-8") as f:
+        json.dump([serialize(s) for s in settings], f, indent=2)
 
 
-# ----------- SETTINGS ENDPOINTS -----------
-
+# ---------------- Settings Endpoints ----------------
 @app.get("/settings", response_model=List[CityAlertSetting])
 def get_all_settings():
     return read_all_settings()
 
-@app.post("/settings")
+
+@app.post("/settings", response_model=CityAlertSetting)
 def add_or_update_setting(setting: CityAlertSetting):
     all_settings = read_all_settings()
-    settings_dict = {s.city.lower(): s for s in all_settings}
-    settings_dict[setting.city.lower()] = setting
-    write_all_settings(list(settings_dict.values()))
+    settings_map = {s.city.lower(): s for s in all_settings}
+    settings_map[setting.city.lower()] = setting
+    write_all_settings(list(settings_map.values()))
     return setting
+
 
 @app.delete("/settings/{city}")
 def delete_setting(city: str):
@@ -109,90 +140,112 @@ def delete_setting(city: str):
     write_all_settings(filtered)
     return {"status": "deleted"}
 
-# ----------- WEATHER ENDPOINT -----------
 
+# ---------------- Weather Endpoint ----------------
 @app.get("/weather")
-def weather_endpoint(city: str = Query(...)):
+def weather_endpoint(city: str = Query(..., min_length=1)):
     start = time.time()
+
+    # Call WeatherAPI
     raw = get_weather_from_api(city)
-    current_epoch = raw["location"]["localtime_epoch"]
 
-    hourly = [
-        {
-            "time": h["time"].split(" ")[1],
-            "temp": h["temp_c"],
-            "icon": h["condition"]["icon"],
-            "wind": h["wind_kph"],
-        }
-        for h in raw["forecast"]["forecastday"][0]["hour"]
-        if h["time_epoch"] > current_epoch
-    ]
+    current_epoch = raw.get("location", {}).get("localtime_epoch", int(time.time()))
 
-    daily = [
-        {
-            "date": d["date"],
-            "max_temp": d["day"]["maxtemp_c"],
-            "min_temp": d["day"]["mintemp_c"],
-            "condition": d["day"]["condition"]["text"],
-            "icon": d["day"]["condition"]["icon"],
-        }
-        for d in raw["forecast"]["forecastday"]
-    ]
+    # Hourly
+    hourly = []
+    forecast_list = raw.get("forecast", {}).get("forecastday", [])
+    if forecast_list:
+        try:
+            for h in forecast_list[0].get("hour", []):
+                if h.get("time_epoch") > current_epoch:
+                    hourly.append(
+                        {
+                            "time": h.get("time", "").split(" ")[1]
+                            if " " in h.get("time", "")
+                            else h.get("time", ""),
+                            "temp": h.get("temp_c"),
+                            "icon": h.get("condition", {}).get("icon"),
+                            "wind": h.get("wind_kph"),
+                        }
+                    )
+        except Exception:
+            logging.exception("Failed parsing hourly data")
+
+    # Daily
+    daily = []
+    try:
+        for d in forecast_list:
+            daily.append(
+                {
+                    "date": d.get("date"),
+                    "max_temp": d.get("day", {}).get("maxtemp_c"),
+                    "min_temp": d.get("day", {}).get("mintemp_c"),
+                    "condition": d.get("day", {}).get("condition", {}).get("text"),
+                    "icon": d.get("day", {}).get("condition", {}).get("icon"),
+                }
+            )
+    except Exception:
+        logging.exception("Failed parsing daily data")
 
     duration_ms = int((time.time() - start) * 1000)
+
     return {
         "location": {
-            "city": raw["location"]["name"],
-            "region": raw["location"]["region"],
+            "city": raw.get("location", {}).get("name"),
+            "region": raw.get("location", {}).get("region"),
         },
         "current": {
-            "temp": raw["current"]["temp_c"],
-            "condition": raw["current"]["condition"]["text"],
-            "icon": raw["current"]["condition"]["icon"],
-            "humidity": raw["current"]["humidity"],
-            "wind": raw["current"]["wind_kph"],
+            "temp": raw.get("current", {}).get("temp_c"),
+            "condition": raw.get("current", {}).get("condition", {}).get("text"),
+            "icon": raw.get("current", {}).get("condition", {}).get("icon"),
+            "humidity": raw.get("current", {}).get("humidity"),
+            "wind": raw.get("current", {}).get("wind_kph"),
         },
         "hourly": hourly,
         "daily": daily,
         "backend_duration_ms": duration_ms,
     }
 
-# ----------- HEALTH ENDPOINT -----------
 
+# ---------------- Health Check ----------------
 @app.get("/health")
 def health_check():
     uptime_sec = int(time.time() - SERVER_START_TS)
     return {"status": "ok", "uptime_seconds": uptime_sec, "timestamp": int(time.time())}
 
-# ----------- ALERT STATUS ENDPOINT -----------
 
+# ---------------- Alerts Status ----------------
 @app.get("/alerts/status")
 def alert_status():
     return ALERT_STATUS
 
-# ----------- BACKGROUND WEATHER MONITOR -----------
 
+# ---------------- Background Monitor ----------------
 @app.on_event("startup")
 async def start_weather_monitor():
-    print("🌤 Starting background weather monitor...")
+    logging.info("🌤 Starting background weather monitor...")
 
-    async def monitor_loop():
+    async def loop():
         while True:
-            settings = load_settings()
-            ok, breaches = check_weather_thresholds(settings)
+            try:
+                settings = load_settings()
+                ok, breaches = check_weather_thresholds(settings)
 
-            if breaches and len(breaches) > 0:
-                ALERT_STATUS["active"] = True
-                ALERT_STATUS["breaches"] = breaches
-            else:
-                ALERT_STATUS["active"] = False
-                ALERT_STATUS["breaches"] = []
+                if breaches:
+                    ALERT_STATUS["active"] = True
+                    ALERT_STATUS["breaches"] = breaches
+                else:
+                    ALERT_STATUS["active"] = False
+                    ALERT_STATUS["breaches"] = []
+            except Exception:
+                logging.exception("Monitor error")
 
             await asyncio.sleep(1)
 
-    asyncio.create_task(monitor_loop())
+    asyncio.create_task(loop())
 
-# Root endpoint
+
+# ---------------- Root ----------------
 @app.get("/")
 def root():
     return {"status": "Weather API is running!"}

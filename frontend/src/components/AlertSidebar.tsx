@@ -12,10 +12,19 @@ type AlertStatus = {
   breaches: BreachEntry[];
 };
 
-export default function AlertSidebar() {
+interface AlertSidebarProps {
+  active?: boolean;
+  breaches?: BreachEntry[];
+}
+
+export default function AlertSidebar({ active, breaches }: AlertSidebarProps) {
   const [alert, setAlert] = useState<AlertStatus | null>(null);
 
+  const usingProps = active !== undefined || breaches !== undefined;
+
   useEffect(() => {
+    if (usingProps) return; // 🔥 skip fetch when testing
+
     const fetchAlerts = async () => {
       try {
         const res = await fetch("http://127.0.0.1:8000/alerts/status", {
@@ -31,7 +40,11 @@ export default function AlertSidebar() {
     fetchAlerts();
     const interval = setInterval(fetchAlerts, 1500);
     return () => clearInterval(interval);
-  }, []);
+  }, [usingProps]);
+
+  const display = usingProps
+    ? { active: active ?? false, breaches: breaches ?? [] }
+    : alert;
 
   return (
     <div
@@ -61,10 +74,10 @@ export default function AlertSidebar() {
         ⚠️ Extreme Alerts
       </h2>
 
-      {!alert || !alert.active ? (
+      {!display || !display.active ? (
         <p style={{ color: "#4caf50" }}>No extreme weather alerts 😊</p>
       ) : (
-        alert.breaches.map((entry) => (
+        display.breaches.map((entry) => (
           <div
             key={entry.city}
             style={{
@@ -80,9 +93,9 @@ export default function AlertSidebar() {
             </strong>
 
             <ul style={{ marginTop: "6px", paddingLeft: "20px" }}>
-              {entry.breaches.map((breach) => (
-                <li key={breach} style={{ marginBottom: "4px", color: "#333" }}>
-                  {breach}
+              {entry.breaches.map((b) => (
+                <li key={b} style={{ marginBottom: "4px", color: "#333" }}>
+                  {b}
                 </li>
               ))}
             </ul>
