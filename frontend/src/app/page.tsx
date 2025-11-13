@@ -1,6 +1,7 @@
 'use client';
 import React, { useState } from 'react';
 import Link from 'next/link';
+import WeatherCharts from "@/components/WeatherCharts";
 
 // --- 1. Define the Shape of Your Data ---
 interface WeatherData {
@@ -164,6 +165,12 @@ export default function Home() {
               ))}
             </div>
           </div>
+          {/* Charts Section */}
+          <div className="bg-white p-6 rounded-xl shadow-md">
+            <h3 className="text-xl font-bold text-gray-800 mb-4">Weather Charts</h3>
+            <WeatherCharts hourly={data.hourly} daily={data.daily} />
+          </div>
+
         </div>
       )}
 
