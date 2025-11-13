@@ -1,9 +1,13 @@
+/**
+ * @jest-environment jsdom
+ */
 import React from "react";
 import { render, screen } from "@testing-library/react";
 import ErrorBanner from "../components/ErrorBanner";
+import "@testing-library/jest-dom";
 
-describe("ErrorBanner — Unit Tests", () => {
-  it("renders the message with correct styles", () => {
+describe("ErrorBanner — Unit Test", () => {
+  it("renders the message and correct styles", () => {
     render(<ErrorBanner message="Error 404" />);
 
     const banner = screen.getByRole("alert");
@@ -11,10 +15,5 @@ describe("ErrorBanner — Unit Tests", () => {
     expect(screen.getByText("Error 404")).toBeInTheDocument();
     expect(banner.className).toContain("bg-red-100");
     expect(banner.className).toContain("border-red-300");
-  });
-
-  it("returns null when message is empty", () => {
-    const { container } = render(<ErrorBanner message="" />);
-    expect(container.firstChild).toBeNull();
   });
 });

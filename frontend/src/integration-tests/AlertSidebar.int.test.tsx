@@ -1,25 +1,35 @@
+/**
+ * @jest-environment jsdom
+ */
 import React from "react";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
 import AlertSidebar from "../components/AlertSidebar";
+import "@testing-library/jest-dom";
+
+global.fetch = jest.fn();
 
 describe("AlertSidebar — Integration Test", () => {
-  beforeEach(() => {
-    global.fetch = jest.fn(() =>
-      Promise.resolve({
-        json: () =>
-          Promise.resolve({
-            active: true,
-            breaches: [{ city: "Mumbai", breaches: ["Temperature"] }],
-          }),
-      })
-    ) as jest.Mock;
-  });
+  it("renders full alert card structure when data arrives", async () => {
+    (global.fetch as jest.Mock).mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        active: true,
+        breaches: [
+          {
+            city: "Mumbai",
+            breaches: ["High Wind", "Heatwave"],
+          },
+        ],
+      }),
+    });
 
-  it("fetches and displays alerts from backend", async () => {
     render(<AlertSidebar />);
 
-    await waitFor(() =>
-      expect(screen.getByText("Mumbai")).toBeInTheDocument()
-    );
+    // Check city appears
+    expect(await screen.findByText("Mumbai")).toBeInTheDocument();
+
+    // Check breach items
+    expect(await screen.findByText("High Wind")).toBeInTheDocument();
+    expect(await screen.findByText("Heatwave")).toBeInTheDocument();
   });
 });
