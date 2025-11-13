@@ -4,7 +4,6 @@ import "@/app/globals.css";
 
 import HealthAlert from "@/components/HealthAlert";
 import AlertSidebar from "@/components/AlertSidebar";
-import WeatherApp from "@/components/WeatherApp";
 
 
 const geistSans = Geist({
