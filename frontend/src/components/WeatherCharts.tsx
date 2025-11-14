@@ -3,6 +3,7 @@
 import { useRef } from "react";
 import { Line } from "react-chartjs-2";
 import jsPDF from "jspdf";
+import type { Chart } from "chart.js";
 
 import {
   Chart as ChartJS,
@@ -41,20 +42,23 @@ interface WeatherChartsProps {
 }
 
 export default function WeatherCharts({ hourly, daily }: WeatherChartsProps) {
-  if (!hourly?.length || !daily?.length)
+  // 🔥 MUST be before any return
+  const tempChartRef = useRef<Chart<"line"> | null>(null);
+  const windChartRef = useRef<Chart<"line"> | null>(null);
+  const dailyChartRef = useRef<Chart<"line"> | null>(null);
+
+  if (!hourly?.length || !daily?.length) {
     return <p className="text-gray-600">Charts will appear once data loads...</p>;
+  }
 
-  // Refs for charts
-  const tempChartRef = useRef<any>(null);
-  const windChartRef = useRef<any>(null);
-  const dailyChartRef = useRef<any>(null);
-
-  // ───────────────────────────────────────────────────
+  // ───────────────────────────────────────────────
   // EXPORT HELPERS
-  // ───────────────────────────────────────────────────
-  const exportPNG = (ref: any, filename: string) => {
+  // ───────────────────────────────────────────────
+  const exportPNG = (
+    ref: React.RefObject<Chart<"line"> | null>,
+    filename: string
+  ) => {
     if (!ref.current) return;
-
     const url = ref.current.toBase64Image();
     const link = document.createElement("a");
     link.href = url;
@@ -62,7 +66,10 @@ export default function WeatherCharts({ hourly, daily }: WeatherChartsProps) {
     link.click();
   };
 
-  const exportPDF = (ref: any, filename: string) => {
+  const exportPDF = (
+    ref: React.RefObject<Chart<"line"> | null>,
+    filename: string
+  ) => {
     if (!ref.current) return;
 
     const imgData = ref.current.toBase64Image();
@@ -90,12 +97,12 @@ export default function WeatherCharts({ hourly, daily }: WeatherChartsProps) {
     ];
 
     charts.forEach((chart, index) => {
+      const instance = chart.ref.current;
+      if (!instance) return;
+
       if (index !== 0) pdf.addPage();
 
-      const chartInstance = chart.ref.current;
-      if (!chartInstance) return;
-
-      const img = chartInstance.toBase64Image();
+      const img = instance.toBase64Image();
 
       pdf.setFontSize(18);
       pdf.text(chart.title, 20, 25);
@@ -105,9 +112,9 @@ export default function WeatherCharts({ hourly, daily }: WeatherChartsProps) {
     pdf.save("all_charts.pdf");
   };
 
-  // ───────────────────────────────────────────────────
+  // ───────────────────────────────────────────────
   // CHART DATA
-  // ───────────────────────────────────────────────────
+  // ───────────────────────────────────────────────
 
   const tempData = {
     labels: hourly.map((h) => h.time),
@@ -149,9 +156,9 @@ export default function WeatherCharts({ hourly, daily }: WeatherChartsProps) {
     ],
   };
 
-  // ───────────────────────────────────────────────────
+  // ───────────────────────────────────────────────
   // UI
-  // ───────────────────────────────────────────────────
+  // ───────────────────────────────────────────────
 
   return (
     <div className="space-y-8 mt-8">
