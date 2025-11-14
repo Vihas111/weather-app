@@ -3,15 +3,16 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-  "dev": "next dev",
-  "build": "next build",
-  "start": "next start",
-  "lint": "eslint .",
-  "test": "jest --watchAll=false --coverage",
-  "test:coverage": "jest --coverage"
-},
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint .",
+    "test": "jest --watchAll=false --coverage",
+    "test:coverage": "jest --coverage"
+  },
   "dependencies": {
     "chart.js": "^4.5.1",
+    "jspdf": "^3.0.3",
     "lucide-react": "^0.552.0",
     "next": "16.0.1",
     "react": "19.2.0",

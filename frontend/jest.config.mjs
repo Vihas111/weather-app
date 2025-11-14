@@ -1,18 +1,23 @@
 import nextJest from 'next/jest.js';
- 
+
 const createJestConfig = nextJest({
-  // Provide the path to your Next.js app to load next.config.ts and .env.
+  // Provide the path to your Next.js app to load next.config.ts and .env
   dir: './',
 });
- 
-// Add any custom config to be passed to Jest
+
 /** @type {import('jest').Config} */
-const config = {
-  // Add more setup options before each test is run
+const customJestConfig = {
+  // Setup file
   setupFilesAfterEnv: ['<rootDir>/jest.setup.mjs'],
- 
+
+  // Test environment
   testEnvironment: 'jest-environment-jsdom',
+
+  // ✅ Add this so Jest doesn't crash when running jspdf / canvas exports
+  moduleNameMapper: {
+    '^jspdf$': '<rootDir>/src/__mocks__/jspdf.ts',
+  },
 };
- 
-// createJestConfig is exported this way to ensure that next/jest can load the Next.js config async.
-export default createJestConfig(config);
+
+// Create the config using Next.js adapter
+export default createJestConfig(customJestConfig);
