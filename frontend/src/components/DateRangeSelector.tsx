@@ -21,8 +21,10 @@ export default function DateRangeSelector({
   const [end, setEnd] = useState(toInputValue(defaultEnd));
   const [error, setError] = useState("");
 
+  // call once on mount so page shows initial data
   useEffect(() => {
     onChange(start, end);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const apply = () => {
@@ -69,9 +71,10 @@ export default function DateRangeSelector({
 
   return (
     <div>
-      <div className="grid grid-cols-12 gap-4 items-center">
-        <div className="col-span-4">
-          <label htmlFor="start-input" className="block text-sm text-black">
+      {/* mobile-first: column on xs, row on sm+ */}
+      <div className="flex flex-col sm:flex-row sm:items-end gap-3 sm:gap-4">
+        <div className="flex-1 min-w-0">
+          <label htmlFor="start-input" className="block text-sm text-black mb-1">
             Start
           </label>
           <input
@@ -79,12 +82,13 @@ export default function DateRangeSelector({
             type="datetime-local"
             value={start}
             onChange={(e) => setStart(e.target.value)}
-            className="w-full p-3 border rounded-lg"
+            className="w-full p-3 border rounded-lg text-sm sm:text-base min-w-0"
+            aria-label="Start date and time"
           />
         </div>
 
-        <div className="col-span-4">
-          <label htmlFor="end-input" className="block text-sm text-black">
+        <div className="flex-1 min-w-0">
+          <label htmlFor="end-input" className="block text-sm text-black mb-1">
             End
           </label>
           <input
@@ -92,45 +96,54 @@ export default function DateRangeSelector({
             type="datetime-local"
             value={end}
             onChange={(e) => setEnd(e.target.value)}
-            className="w-full p-3 border rounded-lg"
+            className="w-full p-3 border rounded-lg text-sm sm:text-base min-w-0"
+            aria-label="End date and time"
           />
         </div>
 
-        <div className="col-span-4 flex gap-2 items-end">
+        <div className="flex-shrink-0 flex items-end gap-2">
           <button
             onClick={apply}
-            className="bg-blue-600 text-white px-5 py-2 rounded-lg"
+            className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm"
+            aria-label="Load range"
           >
             Load
           </button>
 
-          <button
-            onClick={() => setLastHours(6)}
-            className="px-2 py-1 bg-gray-800 text-white text-xs rounded"
-          >
-            6h
-          </button>
+          {/* quick-range buttons wrap on small screens */}
+          <div className="flex gap-2 flex-wrap">
+            <button
+              onClick={() => setLastHours(6)}
+              className="px-2 py-1 bg-gray-800 text-white text-xs rounded"
+              aria-label="Last 6 hours"
+            >
+              6h
+            </button>
 
-          <button
-            onClick={() => setLastHours(12)}
-            className="px-2 py-1 bg-gray-800 text-white text-xs rounded"
-          >
-            12h
-          </button>
+            <button
+              onClick={() => setLastHours(12)}
+              className="px-2 py-1 bg-gray-800 text-white text-xs rounded"
+              aria-label="Last 12 hours"
+            >
+              12h
+            </button>
 
-          <button
-            onClick={() => setLastHours(24)}
-            className="px-2 py-1 bg-gray-800 text-white text-xs rounded"
-          >
-            24h
-          </button>
+            <button
+              onClick={() => setLastHours(24)}
+              className="px-2 py-1 bg-gray-800 text-white text-xs rounded"
+              aria-label="Last 24 hours"
+            >
+              24h
+            </button>
 
-          <button
-            onClick={() => setLastDays(7)}
-            className="px-2 py-1 bg-gray-800 text-white text-xs rounded"
-          >
-            7d
-          </button>
+            <button
+              onClick={() => setLastDays(7)}
+              className="px-2 py-1 bg-gray-800 text-white text-xs rounded"
+              aria-label="Last 7 days"
+            >
+              7d
+            </button>
+          </div>
         </div>
       </div>
 
