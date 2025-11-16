@@ -33,15 +33,16 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     try {
       const savedSettings = localStorage.getItem('userThresholds');
-      if (savedSettings) {
-        setSettings(JSON.parse(savedSettings));
-      }
+      // Set settings OR default to an empty array
+      setSettings(savedSettings ? JSON.parse(savedSettings) : []);
     } catch (error) {
       console.error("Failed to load settings from localStorage", error);
+      setSettings([]); // Set to empty array on error
+    } finally {
+      // This runs *after* the try/catch is complete
+      setIsLoading(false);
     }
-    // We are done loading
-    setIsLoading(false);
-  }, []); // Empty array [] means this runs only once
+  }, []); // Empty array [] ensures this runs only once
   // --- END OF FIX ---
 
   // Function to save settings to both state and localStorage
