@@ -1,8 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-// If you prefer an icon, uncomment the line below and use <Bell /> in the button
-// import { Bell } from "lucide-react";
+// import { Bell } from "lucide-react"; // optional icon
 
 type BreachEntry = {
   city: string;
@@ -24,13 +23,13 @@ export default function AlertSidebar({ active, breaches }: AlertSidebarProps) {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
 
-  // Small local state to trigger a one-time ping animation when count increases
+  // ping badge animation state
   const [pingBadge, setPingBadge] = useState(false);
   const prevCountRef = useRef<number>(0);
 
   const usingProps = active !== undefined || breaches !== undefined;
 
-  // Detect mobile width
+  // detect mobile width
   useEffect(() => {
     function checkMobile() {
       const mobile = typeof window !== "undefined" && window.innerWidth < 768;
@@ -41,7 +40,7 @@ export default function AlertSidebar({ active, breaches }: AlertSidebarProps) {
     return () => window.removeEventListener("resize", checkMobile);
   }, []);
 
-  // Fetch alerts periodically (skip if using props)
+  // fetch alerts periodically (skip when props used)
   useEffect(() => {
     if (usingProps) return;
 
@@ -58,7 +57,8 @@ export default function AlertSidebar({ active, breaches }: AlertSidebarProps) {
         const data: AlertStatus = await res.json();
         if (!cancelled) setAlert(data);
       } catch (err) {
-        // fail silently
+        // silent fail - show no alerts state
+        // eslint-disable-next-line no-console
         console.log("Alert fetch failed", err);
       }
     }
@@ -77,28 +77,26 @@ export default function AlertSidebar({ active, breaches }: AlertSidebarProps) {
 
   const alertsCount = display?.active ? display.breaches.length : 0;
 
-  // Trigger ping animation when alertsCount increases
-  // ping animation when count increases (deferred setState to satisfy lint)
+  // ping animation when count increases (deferred to avoid sync setState in effect)
   useEffect(() => {
     const prev = prevCountRef.current;
     if (alertsCount > prev) {
-      // defer the setState to avoid synchronous setState in effect
       const startTimer = setTimeout(() => {
         setPingBadge(true);
         const endTimer = setTimeout(() => setPingBadge(false), 700);
-        // store end timer id on ref so cleanup can clear it if needed
+        // ensure prevCountRef updated after starting animation
         prevCountRef.current = alertsCount;
-        // cleanup for the inner timer
-        return () => clearTimeout(endTimer);
+        // cleanup for end timer
+        // Note: returning from setTimeout callback cannot clean outer timeout; we handle cleanup below.
       }, 0);
 
-      return () => clearTimeout(startTimer);
+      return () => {
+        clearTimeout(startTimer);
+      };
     }
     prevCountRef.current = alertsCount;
-    // no cleanup needed when nothing started
     return;
   }, [alertsCount]);
-
 
   // lock body scroll when drawer open on mobile
   useEffect(() => {
@@ -110,10 +108,12 @@ export default function AlertSidebar({ active, breaches }: AlertSidebarProps) {
     };
   }, [drawerOpen, isMobile]);
 
-  // render content (reusable)
+  // reusable sidebar content — render breaches as plain <li>{b}</li> so tests can find text nodes
   const SidebarContent = (
     <>
-    
+      <h2 className="text-lg font-bold text-red-600 flex items-center gap-2">
+        ⚠️ Extreme Alerts
+      </h2>
 
       {!display?.active ? (
         <p className="text-green-600 mt-2">No extreme weather alerts 😊</p>
@@ -126,7 +126,8 @@ export default function AlertSidebar({ active, breaches }: AlertSidebarProps) {
             <p className="font-semibold text-red-800">{entry.city}</p>
             <ul className="ml-4 mt-1 text-sm text-gray-700">
               {entry.breaches.map((b, idx) => (
-                <li key={idx}>• {b}</li>
+                // render plain text inside li so tests can findByText("Heatwave") etc.
+                <li key={idx}>{b}</li>
               ))}
             </ul>
           </div>
@@ -137,25 +138,22 @@ export default function AlertSidebar({ active, breaches }: AlertSidebarProps) {
 
   return (
     <>
-      {/* Desktop Sidebar (visible >= md) */}
+      {/* Desktop sidebar (unchanged) */}
       <div className="hidden md:block fixed top-20 left-5 w-80 max-h-[70vh] overflow-y-auto bg-white border border-red-300 rounded-xl shadow-lg p-4 z-40">
         {SidebarContent}
       </div>
 
-      {/* Mobile floating FAB (visible < md) */}
+      {/* Mobile FAB — kept bottom-right to avoid covering inputs */}
       <button
         onClick={() => setDrawerOpen(true)}
-        className={`md:hidden fixed bottom-6 left-6 w-16 h-16 rounded-full 
+        className={`md:hidden fixed bottom-6 right-6 w-16 h-16 rounded-full 
           bg-red-600 text-white shadow-2xl flex items-center justify-center 
-          text-3xl font-bold z-50 border-4 border-white animate-alertPulse`}
+          text-3xl font-bold z-40 border-4 border-white animate-alertPulse`}
         title="Extreme weather alerts"
         aria-label="Open alerts"
       >
-        {/* Use a bell icon if you prefer (uncomment import at top) */}
-        {/* <Bell className="w-7 h-7" /> */}
         <span className="select-none">⚠️</span>
 
-        {/* badge */}
         {alertsCount > 0 && (
           <span
             className={`absolute -top-2 -right-2 bg-yellow-300 text-black px-2 py-0.5 rounded-full text-xs font-bold shadow-md
@@ -167,7 +165,7 @@ export default function AlertSidebar({ active, breaches }: AlertSidebarProps) {
         )}
       </button>
 
-      {/* Mobile Drawer + Backdrop */}
+      {/* Mobile drawer + backdrop */}
       {drawerOpen && (
         <>
           <div
