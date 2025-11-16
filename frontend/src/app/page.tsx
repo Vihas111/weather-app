@@ -8,15 +8,15 @@ import WeatherCharts from '@/components/WeatherCharts';
 // --- Weather data type ---
 interface WeatherData {
   location: {
-    city: string;
+    name: string;
     region: string;
+    country: string;
   };
   current: {
-    temp: number;
-    condition: string;
-    icon: string;
+    temp_c: number;
+    condition: { text: string; icon: string };
     humidity: number;
-    wind: number;
+    wind_kph: number;
   };
   hourly: Array<{
     time: string;
@@ -42,6 +42,20 @@ interface AlertBreach {
   threshold: number;
 }
 
+// --- Error response structure ---
+interface ErrorResponse {
+  detail?: {
+    error?: {
+      message?: string;
+    };
+  };
+}
+
+// --- Alerts status response ---
+interface AlertsStatusResponse {
+  breaches?: AlertBreach[];
+}
+
 export default function HomePage() {
   const [city, setCity] = useState('');
   const [data, setData] = useState<WeatherData | null>(null);
@@ -61,27 +75,22 @@ export default function HomePage() {
     setData(null);
 
     try {
-      const url = `${API_BASE.replace(/\/$/, '')}/weather?city=${encodeURIComponent(
-        city.trim()
-      )}`;
+      const url = `${API_BASE.replace(
+        /\/$/,
+        ''
+      )}/weather?city=${encodeURIComponent(city.trim())}`;
 
       const res = await fetch(url);
 
       if (!res.ok) {
-        // graceful error message for WeatherAPI 400/404
         let finalMessage = 'Invalid city';
 
         try {
-          const json = await res.json();
+          const json: ErrorResponse = await res.json();
           const detail = json.detail;
 
-          if (detail) {
-            const parsed =
-              typeof detail === 'string' ? JSON.parse(detail) : detail;
-
-            if (parsed?.error?.message) {
-              finalMessage = `Invalid city: ${parsed.error.message}`;
-            }
+          if (detail?.error?.message) {
+            finalMessage = `Invalid city: ${detail.error.message}`;
           }
         } catch {
           finalMessage = `Invalid city (API error ${res.status})`;
@@ -90,23 +99,48 @@ export default function HomePage() {
         throw new Error(finalMessage);
       }
 
-      const weatherData = (await res.json()) as WeatherData;
-      setData(weatherData);
+      const weatherData = await res.json();
 
-      // Fetch current alert breaches
+      // Normalize to WeatherData
+      const normalized: WeatherData = {
+        location: {
+          name: weatherData.location?.name ?? '',
+          region: weatherData.location?.region ?? '',
+          country: weatherData.location?.country ?? '',
+        },
+        current: {
+          temp_c: weatherData.current?.temp_c ?? 0,
+          condition:
+            weatherData.current?.condition ?? { text: '', icon: '' },
+          humidity: weatherData.current?.humidity ?? 0,
+          wind_kph: weatherData.current?.wind_kph ?? 0,
+        },
+        hourly: weatherData.hourly ?? [],
+        daily: weatherData.daily ?? [],
+        backend_duration_ms: weatherData.backend_duration_ms ?? 0,
+      };
+
+      setData(normalized);
+
+      // Fetch alert status
       try {
         const alertRes = await fetch(
           `${API_BASE.replace(/\/$/, '')}/alerts/status`
         );
-        const alertJson = await alertRes.json();
+        if (alertRes.ok) {
+          const alertJson: AlertsStatusResponse = await alertRes.json();
 
-        if (Array.isArray(alertJson.breaches)) {
-          setAlertBreaches(alertJson.breaches as AlertBreach[]);
+          if (Array.isArray(alertJson.breaches)) {
+            setAlertBreaches(alertJson.breaches);
+          } else {
+            setAlertBreaches([]);
+          }
         } else {
           setAlertBreaches([]);
         }
       } catch {
         console.error('Failed to fetch alerts');
+        setAlertBreaches([]);
       }
     } catch (err) {
       if (err instanceof Error) setError(err.message);
@@ -116,26 +150,42 @@ export default function HomePage() {
     }
   }
 
-  // Determine if searched city is under alert
-  const cityUnderAlert = alertBreaches.some(
-    (b) =>
-      data?.location.city &&
-      b.city.toLowerCase() === data.location.city.toLowerCase()
-  );
+  // SAFE alert matching without any type issues
+  const cityUnderAlert =
+    data?.location?.name &&
+    alertBreaches.some((b) => {
+      if (!b.city) return false;
+      if (typeof b.city !== 'string') return false;
+
+      return (
+        b.city.toLowerCase() === data.location.name.toLowerCase()
+      );
+    });
 
   return (
     <div className="min-h-screen bg-gray-100 p-8 flex flex-col items-center">
       {/* MAIN SEARCH CARD */}
       <div className="w-full max-w-3xl bg-white rounded-xl shadow-lg p-6 mb-8">
         <div className="flex justify-between items-center mb-4">
-          <h1 className="text-3xl font-bold text-gray-800">Nimbus Weather</h1>
+          <h1 className="text-3xl font-bold text-gray-800">
+            Nimbus Weather
+          </h1>
 
-          <Link
-            href="/settings"
-            className="text-gray-500 hover:text-blue-600 transition-colors"
-          >
-            <span className="text-3xl">⚙️</span>
-          </Link>
+          <div className="flex gap-4">
+            <Link
+              href="/history"
+              className="text-gray-500 hover:text-blue-600"
+            >
+              History
+            </Link>
+
+            <Link
+              href="/settings"
+              className="text-gray-500 hover:text-blue-600"
+            >
+              Settings
+            </Link>
+          </div>
         </div>
 
         <form onSubmit={handleSearch} className="flex gap-4">
@@ -151,11 +201,10 @@ export default function HomePage() {
             className="bg-blue-600 text-white px-6 py-3 rounded-lg font-semibold hover:bg-blue-700 disabled:opacity-50"
             type="submit"
           >
-            {loading ? 'Searching...' : 'Search'}
+            {loading ? 'Loading...' : 'Search'}
           </button>
         </form>
 
-        {/* ERROR BANNER */}
         {error && <ErrorBanner message={error} />}
       </div>
 
@@ -164,36 +213,29 @@ export default function HomePage() {
         <div className="w-full max-w-3xl space-y-6">
           {/* CURRENT WEATHER CARD */}
           <div
-            className={`p-8 rounded-xl shadow-md flex justify-between items-center transition-all ${
+            className={`p-8 rounded-xl shadow-md flex justify-between items-center ${
               cityUnderAlert
                 ? 'bg-red-50 border border-red-300'
                 : 'bg-white'
             }`}
           >
             <div>
-              <h2 className="text-4xl font-bold text-gray-900 flex items-center gap-3">
-                {data.location.city}
-
-                {cityUnderAlert && (
-                  <span className="text-red-600 text-lg font-semibold">
-                    ⚠️ Alert Active
-                  </span>
-                )}
+              <h2 className="text-4xl font-bold text-gray-900">
+                {data.location.name}
               </h2>
-
-              <p className="text-gray-500 text-lg">{data.location.region}</p>
+              <p className="text-gray-500">{data.location.region}</p>
 
               <div className="mt-4 flex items-center gap-4">
                 <span className="text-7xl font-bold text-gray-800">
-                  {data.current.temp}°
+                  {data.current.temp_c}°
                 </span>
 
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
                   src={
-                    data.current.icon.startsWith('http')
-                      ? data.current.icon
-                      : `https:${data.current.icon}`
+                    data.current.condition.icon?.startsWith('http')
+                      ? data.current.condition.icon
+                      : `https:${data.current.condition.icon}`
                   }
                   alt="weather icon"
                   className="w-20 h-20"
@@ -201,22 +243,17 @@ export default function HomePage() {
               </div>
 
               <p className="text-xl text-blue-600 mt-2">
-                {data.current.condition}
+                {data.current.condition.text}
               </p>
             </div>
 
-            <div className="text-right space-y-3 text-gray-700 text-lg">
-              <p>
-                💧 Humidity: <strong>{data.current.humidity}%</strong>
-              </p>
-              <p>
-                💨 Wind: <strong>{data.current.wind} km/h</strong>
-              </p>
+            <div className="text-right text-gray-700 text-lg space-y-2">
+              <p>Humidity: {data.current.humidity}%</p>
+              <p>Wind: {data.current.wind_kph} km/h</p>
 
               {typeof data.backend_duration_ms === 'number' && (
                 <p className="text-sm text-gray-500">
-                  Backend:{' '}
-                  <strong>{data.backend_duration_ms} ms</strong>
+                  Backend: {data.backend_duration_ms} ms
                 </p>
               )}
             </div>
@@ -224,7 +261,9 @@ export default function HomePage() {
 
           {/* HOURLY FORECAST */}
           <div className="bg-white p-6 rounded-xl shadow-md">
-            <h3 className="text-xl font-bold text-gray-800 mb-4">Today&apos;s Forecast</h3>
+            <h3 className="text-xl font-bold text-gray-800 mb-4">
+              {"Today's Forecast"}
+            </h3>
 
             <div className="flex overflow-x-auto gap-4 pb-2">
               {data.hourly.map((h) => (
@@ -236,15 +275,18 @@ export default function HomePage() {
 
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
-                    src={h.icon.startsWith('http') ? h.icon : `https:${h.icon}`}
-                    alt="icon"
+                    src={
+                      h.icon?.startsWith('http')
+                        ? h.icon
+                        : `https:${h.icon}`
+                    }
+                    alt=""
                     className="w-12 h-12 mx-auto my-2"
                   />
 
                   <p className="text-xl font-bold text-gray-800">
                     {h.temp}°
                   </p>
-
                   <p className="text-sm text-blue-500">{h.wind} km/h</p>
                 </div>
               ))}
@@ -273,8 +315,12 @@ export default function HomePage() {
                   <div className="flex items-center gap-6">
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img
-                      src={d.icon.startsWith('http') ? d.icon : `https:${d.icon}`}
-                      alt="icon"
+                      src={
+                        d.icon?.startsWith('http')
+                          ? d.icon
+                          : `https:${d.icon}`
+                      }
+                      alt=""
                       className="w-12 h-12"
                     />
 
@@ -299,7 +345,10 @@ export default function HomePage() {
               Weather Charts
             </h3>
 
-            <WeatherCharts hourly={data.hourly} daily={data.daily} />
+            <WeatherCharts
+              hourly={data.hourly}
+              daily={data.daily}
+            />
           </div>
         </div>
       )}
