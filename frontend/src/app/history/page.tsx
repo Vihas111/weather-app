@@ -91,7 +91,7 @@ export default function HistoryPage(): JSX.Element {
           />
           <div className="flex items-center justify-between gap-2">
             <p className="text-xs text-gray-500">Type a city and then select dates.</p>
-            <p className="text-xs text-gray-400">Prefer full names (e.g. "Bengaluru")</p>
+            <p className="text-xs text-gray-400">Prefer full names (e.g. &quot;Bengaluru&quot;)</p>
           </div>
         </div>
 

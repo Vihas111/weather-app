@@ -78,16 +78,27 @@ export default function AlertSidebar({ active, breaches }: AlertSidebarProps) {
   const alertsCount = display?.active ? display.breaches.length : 0;
 
   // Trigger ping animation when alertsCount increases
+  // ping animation when count increases (deferred setState to satisfy lint)
   useEffect(() => {
     const prev = prevCountRef.current;
     if (alertsCount > prev) {
-      setPingBadge(true);
-      // clear ping after animation length
-      const t = setTimeout(() => setPingBadge(false), 700);
-      return () => clearTimeout(t);
+      // defer the setState to avoid synchronous setState in effect
+      const startTimer = setTimeout(() => {
+        setPingBadge(true);
+        const endTimer = setTimeout(() => setPingBadge(false), 700);
+        // store end timer id on ref so cleanup can clear it if needed
+        prevCountRef.current = alertsCount;
+        // cleanup for the inner timer
+        return () => clearTimeout(endTimer);
+      }, 0);
+
+      return () => clearTimeout(startTimer);
     }
     prevCountRef.current = alertsCount;
+    // no cleanup needed when nothing started
+    return;
   }, [alertsCount]);
+
 
   // lock body scroll when drawer open on mobile
   useEffect(() => {

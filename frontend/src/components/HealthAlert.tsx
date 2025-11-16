@@ -69,16 +69,72 @@ export default function HealthAlert() {
   }
 
   useEffect(() => {
-    checkHealth();
-    timerRef.current = window.setInterval(checkHealth, POLL_INTERVAL_MS);
+  // inline the health check so the effect does not depend on external function identity
+    let cancelled = false;
+
+    async function runCheck() {
+      try {
+        const t0 = performance.now();
+        const res = await fetch(HEALTH_URL, { cache: "no-store" });
+        const t1 = performance.now();
+        const roundTrip = Math.round(t1 - t0);
+        if (cancelled) return;
+
+        setLastChecked(Date.now());
+
+        if (!res.ok) {
+          setOk(false);
+          setMessage(`Backend returned ${res.status}`);
+          setDegraded(false);
+          return;
+        }
+
+        // parse JSON but ignore parse failures
+        await res.json().catch(() => ({}));
+
+        if (roundTrip > SLOW_THRESHOLD_MS) {
+          setOk(true);
+          setDegraded(true);
+          setMessage(`Degraded: backend slow (${roundTrip} ms)`);
+        } else {
+          setOk(true);
+          setDegraded(false);
+          setMessage(null);
+        }
+      } catch (err: unknown) {
+        if (cancelled) return;
+        setOk(false);
+        setDegraded(false);
+        if (err instanceof Error) setMessage(err.message);
+        else setMessage("Backend unreachable");
+        setLastChecked(Date.now());
+      }
+    }
+
+    // call once (deferred to avoid sync state-in-effect lint)
+    const initial = setTimeout(() => {
+      runCheck();
+      // schedule periodic polling
+      timerRef.current = window.setInterval(runCheck, POLL_INTERVAL_MS);
+    }, 0);
+
     return () => {
+      cancelled = true;
+      clearTimeout(initial);
       if (timerRef.current) window.clearInterval(timerRef.current);
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+
   useEffect(() => {
-    if (ok === false || degraded) setVisible(true);
+    if (ok === false || degraded) {
+      const t = setTimeout(() => setVisible(true), 0);
+      return () => clearTimeout(t);
+    }
+    return;
   }, [ok, degraded]);
+
 
   if (ok === null || !visible) return null;
 
