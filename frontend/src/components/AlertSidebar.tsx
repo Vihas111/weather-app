@@ -157,9 +157,15 @@ export default function AlertSidebar({ active, breaches }: AlertSidebarProps) {
     // Re-run this entire effect if the user changes their settings
   }, [usingProps, settings, isSettingsLoading]);
 
-  // 6. --- FROM HERE DOWN, THE FILE IS UNCHANGED ---
-  // The rest of your component logic just works!
+  // 6. --- THIS IS THE FIX ---
+  // If the settings are still loading from localStorage, render nothing.
+  if (isSettingsLoading) {
+    return null;
+  }
+  // --- END OF FIX ---
 
+
+  // The rest of your component logic just works!
   const display: AlertStatus = usingProps
     ? { active: active ?? false, breaches: breaches ?? [] }
     : alert ?? { active: false, breaches: [] };
