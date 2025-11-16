@@ -10,10 +10,15 @@ from datetime import datetime, timedelta
 import requests
 import cachetools
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
+# Logging
+from .logging_config import setup_logging
+logger = setup_logging()
+
+# Alerts
 from .alert_monitor import load_settings, check_weather_thresholds
 
 # ---------------------- Setup ----------------------
@@ -25,7 +30,6 @@ load_dotenv(ENV_PATH)
 API_KEY = os.getenv("API_KEY")
 
 app = FastAPI(title="Nimbus Weather Backend")
-SERVER_START_TS = time.time()
 
 ALERT_STATUS = {"active": False, "breaches": []}
 
@@ -38,8 +42,10 @@ app.add_middleware(
 
 api_cache = cachetools.TTLCache(maxsize=300, ttl=900)
 
+SETTINGS_PATH = ROOT_DIR / "settings.json"
+
 # ---------------------------------------------------
-# Flexible datetime parser
+# Date Parsing Helpers
 # ---------------------------------------------------
 def parse_dt(s: str) -> datetime:
     fmts = ["%Y-%m-%dT%H:%M", "%Y-%m-%d %H:%M", "%Y-%m-%d"]
@@ -48,48 +54,84 @@ def parse_dt(s: str) -> datetime:
             return datetime.strptime(s, f)
         except:
             continue
-    raise HTTPException(400, "Invalid date format; must be YYYY-MM-DD or YYYY-MM-DDTHH:MM")
+    raise HTTPException(400, "Invalid date format")
 
 def day_list(start: datetime, end: datetime) -> List[datetime]:
     cur = start.date()
     last = end.date()
-    days = []
+    out = []
     while cur <= last:
-        days.append(datetime(cur.year, cur.month, cur.day))
+        out.append(datetime(cur.year, cur.month, cur.day))
         cur += timedelta(days=1)
-    return days
+    return out
 
 # ---------------------------------------------------
-# WeatherAPI forecast wrapper
+# WeatherAPI Forecast Wrapper
 # ---------------------------------------------------
 @cachetools.cached(api_cache)
 def get_weather_forecast(city: str) -> dict:
+
+    logger.info("", extra={"event": "weather_api_called", "city": city, "breaches": None})
+
     if not API_KEY:
         raise HTTPException(500, "Missing WeatherAPI key")
 
     url = "https://api.weatherapi.com/v1/forecast.json"
-    resp = requests.get(url, params={"key": API_KEY, "q": city, "days": 3})
 
+    # ⭐ LOG external API request failures
+    try:
+        resp = requests.get(url, params={"key": API_KEY, "q": city, "days": 3}, timeout=5)
+    except Exception as e:
+        logger.error(
+            "",
+            extra={
+                "event": "weather_api_request_failed",
+                "city": city,
+                "breaches": str(e),
+            },
+        )
+        raise HTTPException(500, "Weather API request failed")
+
+    # ⭐⭐⭐ THIS IS THE ONLY FIX ADDED (Option A) ⭐⭐⭐
     if resp.status_code != 200:
-        raise HTTPException(resp.status_code, resp.text)
+        logger.error(
+            "",
+            extra={
+                "event": "weather_api_error",
+                "city": city,
+                "breaches": f"status={resp.status_code}",
+            },
+        )
+        raise HTTPException(500, "Weather API returned an error")
+    # ⭐⭐⭐ END OF FIX ⭐⭐⭐
 
     data = resp.json()
+
+    # ⭐ City not found logging
     if "error" in data:
+        logger.warning(
+            "",
+            extra={
+                "event": "city_not_found",
+                "city": city,
+                "breaches": data["error"],
+            },
+        )
         raise HTTPException(404, "City not found")
 
     return data
 
 @app.get("/weather")
 def weather(city: str):
+
+    logger.info("", extra={"event": "weather_endpoint_hit", "city": city, "breaches": None})
+
     raw = get_weather_forecast(city)
 
     current = raw.get("current", {})
     location = raw.get("location", {})
-
-    # Astro values
     astro = raw.get("forecast", {}).get("forecastday", [{}])[0].get("astro", {})
 
-    # Build HOURLY
     hourly = []
     forecast = raw.get("forecast", {}).get("forecastday", [])
     if forecast:
@@ -101,7 +143,6 @@ def weather(city: str):
                 "icon": h.get("condition", {}).get("icon", "")
             })
 
-    # Build DAILY
     daily = []
     for d in forecast:
         fd = d.get("day", {})
@@ -114,11 +155,7 @@ def weather(city: str):
         })
 
     return {
-        "location": {
-            "name": location.get("name", ""),
-            "region": location.get("region", ""),
-            "country": location.get("country", "")
-        },
+        "location": location,
         "current": {
             "temp_c": current.get("temp_c"),
             "wind_kph": current.get("wind_kph"),
@@ -136,6 +173,9 @@ def weather(city: str):
 # ---------------------------------------------------
 @app.get("/api/weather/history")
 def history(city: str, start: str, end: str):
+
+    logger.info("", extra={"event": "history_endpoint_hit", "city": city, "breaches": None})
+
     start_dt = parse_dt(start)
     end_dt = parse_dt(end)
 
@@ -144,16 +184,23 @@ def history(city: str, start: str, end: str):
 
     span = end_dt - start_dt
 
-    # ---------------- HOURLY MODE ----------------
+    # HOURLY MODE
     if span <= timedelta(hours=24):
         hourly = []
-
         for d in day_list(start_dt, end_dt):
             dstr = d.strftime("%Y-%m-%d")
             url = "https://api.weatherapi.com/v1/history.json"
             resp = requests.get(url, params={"key": API_KEY, "q": city, "dt": dstr})
 
             if resp.status_code != 200:
+                logger.error(
+                    "",
+                    extra={
+                        "event": "history_api_error",
+                        "city": city,
+                        "breaches": f"status {resp.status_code}",
+                    },
+                )
                 continue
 
             raw = resp.json()
@@ -175,7 +222,7 @@ def history(city: str, start: str, end: str):
         hourly.sort(key=lambda x: x["time"])
         return {"mode": "hourly", "data": hourly}
 
-    # ---------------- DAILY MODE ----------------
+    # DAILY MODE
     results = []
     for d in day_list(start_dt, end_dt):
         dstr = d.strftime("%Y-%m-%d")
@@ -183,11 +230,18 @@ def history(city: str, start: str, end: str):
         resp = requests.get(url, params={"key": API_KEY, "q": city, "dt": dstr})
 
         if resp.status_code != 200:
+            logger.error(
+                "",
+                extra={
+                    "event": "history_api_error",
+                    "city": city,
+                    "breaches": f"status {resp.status_code}",
+                },
+            )
             continue
 
         raw = resp.json()
         fd = raw.get("forecast", {}).get("forecastday", [{}])[0]
-
         hours = fd.get("hour", [])
         astro = fd.get("astro", {})
 
@@ -219,8 +273,6 @@ def history(city: str, start: str, end: str):
             "humidity_avg": avg_h,
             "humidity_min": min_h,
             "humidity_max": max_h,
-
-            # 🌅 NEW FIELDS
             "sunrise": astro.get("sunrise", ""),
             "sunset": astro.get("sunset", ""),
         })
@@ -228,8 +280,84 @@ def history(city: str, start: str, end: str):
     return {"mode": "daily", "data": results}
 
 # ---------------------------------------------------
+# SETTINGS ENDPOINTS
+# ---------------------------------------------------
+def load_settings_file() -> Dict[str, Any]:
+    if SETTINGS_PATH.exists():
+        try:
+            return json.load(open(SETTINGS_PATH, "r"))
+        except:
+            return {}
+    return {}
+
+def save_settings_file(data: Dict[str, Any]):
+    json.dump(data, open(SETTINGS_PATH, "w"), indent=2)
+
+@app.get("/settings")
+def get_settings():
+
+    logger.info("", extra={"event": "settings_load", "city": None, "breaches": None})
+
+    raw = load_settings_file()
+
+    return [
+        {
+            "city": city,
+            "max_temp": vals.get("max_temp"),
+            "min_temp": vals.get("min_temp"),
+            "max_wind_kph": vals.get("max_wind_kph"),
+        }
+        for city, vals in raw.items()
+    ]
+
+class CitySetting(BaseModel):
+    max_temp: Optional[float] = None
+    min_temp: Optional[float] = None
+    max_wind_kph: Optional[float] = None
+
+@app.post("/settings/{city}")
+def save_setting(city: str, setting: CitySetting):
+
+    logger.info("", extra={"event": "settings_save", "city": city, "breaches": None})
+
+    raw = load_settings_file()
+
+    try:
+        raw[city] = {
+            "max_temp": setting.max_temp,
+            "min_temp": setting.min_temp,
+            "max_wind_kph": setting.max_wind_kph,
+        }
+        save_settings_file(raw)
+
+    except Exception as e:
+        logger.error(
+            "",
+            extra={
+                "event": "settings_save_failed",
+                "city": city,
+                "breaches": str(e),
+            },
+        )
+        raise
+
+    return {"status": "saved", "city": city}
+
+@app.delete("/settings/{city}")
+def delete_setting(city: str):
+
+    logger.info("", extra={"event": "settings_delete", "city": city, "breaches": None})
+
+    raw = load_settings_file()
+    if city in raw:
+        del raw[city]
+        save_settings_file(raw)
+    return {"status": "deleted", "city": city}
+
+# ---------------------------------------------------
 @app.get("/health")
 def health():
+    logger.info("", extra={"event": "health_check", "city": None, "breaches": None})
     return {"status": "ok"}
 
 @app.get("/alerts/status")
@@ -243,14 +371,31 @@ async def on_start():
             try:
                 settings = load_settings()
                 ok, breaches = check_weather_thresholds(settings)
+
                 ALERT_STATUS["active"] = bool(breaches)
                 ALERT_STATUS["breaches"] = breaches
-            except:
-                pass
+
+                # LOG alert loop status
+                logger.info(
+                    "",
+                    extra={"event": "alert_loop", "city": None, "breaches": breaches},
+                )
+
+            except Exception as e:
+                logger.error(
+                    "",
+                    extra={
+                        "event": "alert_loop_error",
+                        "city": None,
+                        "breaches": str(e),
+                    },
+                )
+
             await asyncio.sleep(1)
 
     asyncio.create_task(loop())
 
 @app.get("/")
 def root():
+    logger.info("", extra={"event": "root_hit", "city": None, "breaches": None})
     return {"status": "Weather API is running!"}

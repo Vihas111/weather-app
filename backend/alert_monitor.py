@@ -1,107 +1,160 @@
 # backend/alert_monitor.py
 import os
-import requests
-import time
-from dotenv import load_dotenv
 import sys
+import time
 import json
+import logging
 from typing import List, Dict, Optional, Any
+from pathlib import Path
 
-# --- Setup ---
-SCRIPT_DIR = os.path.dirname(__file__)
-ROOT_DIR = os.path.dirname(SCRIPT_DIR)
-ENV_PATH = os.path.join(ROOT_DIR, ".env")
-load_dotenv(dotenv_path=ENV_PATH)
+import requests
+from dotenv import load_dotenv
 
-# --- Config ---
+# -------------------------------------------------------------------
+# Logging Initialization
+# -------------------------------------------------------------------
+try:
+    from backend.logging_config import setup_logging
+    setup_logging()
+except Exception:
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+
+logger = logging.getLogger("weather-backend")
+
+# -------------------------------------------------------------------
+# Paths & Environment
+# -------------------------------------------------------------------
+SCRIPT_DIR = Path(__file__).resolve().parent
+ROOT_DIR = SCRIPT_DIR.parent
+ENV_PATH = ROOT_DIR / ".env"
+
+if ENV_PATH.exists():
+    load_dotenv(dotenv_path=str(ENV_PATH))
+else:
+    load_dotenv()
+
 BACKEND_URL = os.getenv("BACKEND_URL", "http://127.0.0.1:8000")
-BACKEND_HEALTH_URL = f"{BACKEND_URL}/health"
-WEBHOOK_URL = os.getenv("ALERT_WEBHOOK_URL")
+BACKEND_HEALTH_URL = f"{BACKEND_URL.rstrip('/')}/health"
 
-# Weather API config (call external provider directly)
+WEBHOOK_URL = os.getenv("ALERT_WEBHOOK_URL") or os.getenv("BETTERSTACK_TOKEN")
 WEATHER_API_URL = "https://api.weatherapi.com/v1/forecast.json"
 API_KEY = os.getenv("API_KEY")
 
-# --- Settings File Path ---
-SETTINGS_FILE = os.path.join(ROOT_DIR, "alert_settings.json")
+# 🔥 Correct unified settings file (same as backend main.py)
+SETTINGS_FILE = str(ROOT_DIR / "settings.json")
 
-
-def send_webhook_alert(title: str, message: str):
+# -------------------------------------------------------------------
+# Webhook Sender
+# -------------------------------------------------------------------
+def send_webhook_alert(title: str, message: str) -> None:
     if not WEBHOOK_URL:
-        # webhook not configured — silent
+        logger.warning({"event": "webhook_missing", "title": title})
         return
+
     payload = {"text": f":rotating_light: *{title}*\n{message}"}
+
     try:
-        r = requests.post(WEBHOOK_URL, json=payload, timeout=10)
-        r.raise_for_status()
+        ingestion_host = os.getenv("BETTERSTACK_INGEST_HOST")
+        endpoint = ingestion_host if ingestion_host else WEBHOOK_URL
+
+        if endpoint.startswith("http"):
+            r = requests.post(endpoint, json=payload, timeout=5)
+            r.raise_for_status()
+            logger.info({"event": "webhook_sent", "title": title, "status": r.status_code})
+        else:
+            logger.warning({"event": "webhook_bad_config", "token_snippet": str(endpoint)[:8]})
     except Exception as e:
-        print(f"Failed to send webhook alert for {title}: {e}")
+        logger.error({"event": "webhook_failure", "title": title, "error": str(e)})
 
-
-def check_health():
+# -------------------------------------------------------------------
+# Backend Health Check
+# -------------------------------------------------------------------
+def check_health() -> bool:
     try:
         r = requests.get(BACKEND_HEALTH_URL, timeout=5)
         if r.status_code != 200:
             msg = f"Unhealthy status code: {r.status_code} - body: {r.text}"
+            logger.error({"event": "backend_unhealthy", "status": r.status_code})
             send_webhook_alert("Nimbus backend UNHEALTHY", msg)
             return False
-        j = r.json()
-        ts = j.get("timestamp")
-        uptime = j.get("uptime_seconds")
-        print(f"OK: Health check passed. Uptime={uptime}s, Timestamp={ts}")
+
         return True
+
     except Exception as e:
-        msg = f"Exception while checking health: {e}"
-        print(msg)
-        send_webhook_alert("Nimbus backend DOWN", msg)
+        logger.error({"event": "backend_health_exception", "error": str(e)})
+        send_webhook_alert("Nimbus backend DOWN", str(e))
         return False
 
-
+# -------------------------------------------------------------------
+# Load Alert Settings (Supports both dict & list formats)
+# -------------------------------------------------------------------
 def load_settings() -> List[Dict[str, Any]]:
-    """Loads the list of alert settings from the shared JSON file."""
+    """
+    Returns a list of:
+
+    [
+      { "city": "Bengaluru", "max_temp": 35, "min_temp": 10, "max_wind_kph": 60 },
+      ...
+    ]
+    """
+
     if not os.path.exists(SETTINGS_FILE):
-        print(f"Settings file not found at {SETTINGS_FILE}. Skipping threshold checks.")
+        logger.warning({"event": "settings_missing", "path": SETTINGS_FILE})
         return []
+
     try:
-        with open(SETTINGS_FILE, "r") as f:
-            settings_list = json.load(f)
-            if not isinstance(settings_list, list):
-                print("Settings file is invalid (not a list). Skipping.")
-                return []
-            return settings_list
+        with open(SETTINGS_FILE, "r", encoding="utf-8") as fh:
+            data = json.load(fh)
     except Exception as e:
-        print(f"Error reading settings file: {e}. Skipping threshold checks.")
+        logger.error({"event": "settings_load_error", "error": str(e)})
         return []
 
+    # Case 1: new frontend format = dict
+    if isinstance(data, dict):
+        converted = []
+        for city, vals in data.items():
+            converted.append({
+                "city": city,
+                "max_temp": vals.get("max_temp"),
+                "min_temp": vals.get("min_temp"),
+                "max_wind_kph": vals.get("max_wind"),
+            })
+        logger.info({"event": "settings_loaded_dict", "count": len(converted)})
+        return converted
 
+    # Case 2: old format = list
+    if isinstance(data, list):
+        logger.info({"event": "settings_loaded_list", "count": len(data)})
+        return data
+
+    logger.error({"event": "settings_invalid_format"})
+    return []
+
+# -------------------------------------------------------------------
+# Fetch Weather From WeatherAPI
+# -------------------------------------------------------------------
 def fetch_weather_external(city: str) -> Optional[Dict[str, Any]]:
-    """
-    Query the external weather API directly (no internal HTTP call).
-    Returns the parsed JSON or None on failure.
-    """
     if not API_KEY:
-        print("No WEATHER API_KEY configured in .env")
+        logger.error({"event": "api_key_missing"})
         return None
 
     try:
-        params = {"key": API_KEY, "q": city, "days": 3, "aqi": "no"}
-        r = requests.get(WEATHER_API_URL, params=params, timeout=10)
+        r = requests.get(WEATHER_API_URL, params={"key": API_KEY, "q": city, "days": 3}, timeout=10)
         if r.status_code != 200:
-            print(f"Weather API error for {city}: {r.status_code} - {r.text}")
+            logger.error({"event": "weather_api_error", "city": city})
             return None
+
         return r.json()
+
     except Exception as e:
-        print(f"Exception while calling weather API for {city}: {e}")
+        logger.error({"event": "weather_api_exception", "city": city, "error": str(e)})
         return None
 
-
+# -------------------------------------------------------------------
+# Threshold Checking
+# -------------------------------------------------------------------
 def check_weather_thresholds(settings_list: List[Dict[str, Any]]):
-    """
-    Returns:
-      (all_ok: bool, all_breaches: List[{"city": str, "breaches": [str]}])
-    """
     if not settings_list:
-        # no configured cities -> nothing to check (not an error)
         return True, []
 
     all_ok = True
@@ -110,72 +163,49 @@ def check_weather_thresholds(settings_list: List[Dict[str, Any]]):
     for setting in settings_list:
         city = setting.get("city")
         if not city:
-            print("Skipping invalid setting (missing 'city')")
             continue
 
-        alert_max_temp = setting.get("max_temp")
-        alert_min_temp = setting.get("min_temp")
-        alert_max_wind = setting.get("max_wind_kph")
-
-        print(f"--- Checking weather for: {city} ---")
         raw = fetch_weather_external(city)
         if not raw:
-            # If the external fetch failed, optionally send webhook and continue
-            print(f"Failed to fetch weather for {city}.")
-            # send_webhook_alert(f"Weather Check FAILED: {city}", f"Could not fetch data.")
             all_ok = False
             continue
 
-        current = raw.get("current")
-        location_name = raw.get("location", {}).get("name", city)
-        if not current:
-            print(f"Could not parse 'current' for {city}. Response: {raw}")
-            all_ok = False
-            continue
-
-        temp = current.get("temp_c") if current.get("temp_c") is not None else current.get("temp")
-        wind = current.get("wind_kph") if current.get("wind_kph") is not None else current.get("wind")
+        current = raw.get("current", {})
+        temp = current.get("temp_c") or current.get("temp")
+        wind = current.get("wind_kph") or current.get("wind")
 
         breaches = []
 
-        if alert_max_temp is not None and temp is not None and temp > alert_max_temp:
-            breaches.append(f"Max Temp Exceeded: {temp}°C (Threshold: {alert_max_temp}°C)")
+        if setting.get("max_temp") is not None and temp is not None and temp > setting["max_temp"]:
+            breaches.append(f"Max Temp Exceeded: {temp}°C (> {setting['max_temp']}°C)")
 
-        if alert_min_temp is not None and temp is not None and temp < alert_min_temp:
-            breaches.append(f"Min Temp Breach: {temp}°C (Threshold: {alert_min_temp}°C)")
+        if setting.get("min_temp") is not None and temp is not None and temp < setting["min_temp"]:
+            breaches.append(f"Min Temp Breach: {temp}°C (< {setting['min_temp']}°C)")
 
-        if alert_max_wind is not None and wind is not None and wind > alert_max_wind:
-            breaches.append(f"Max Wind Exceeded: {wind} kph (Threshold: {alert_max_wind} kph)")
+        if setting.get("max_wind_kph") is not None and wind is not None and wind > setting["max_wind_kph"]:
+            breaches.append(f"Max Wind Exceeded: {wind} kph (> {setting['max_wind_kph']} kph)")
 
         if breaches:
             all_ok = False
-            print(f"ALERT for {location_name}: {breaches}")
-            # send_webhook_alert(f"Weather Threshold Alert for {location_name}", "\n".join(breaches))
-            all_breaches.append({"city": location_name, "breaches": breaches})
-        else:
-            print(f"OK: Weather thresholds passed for {city}.")
+            all_breaches.append({"city": city, "breaches": breaches})
 
     return all_ok, all_breaches
 
-
+# -------------------------------------------------------------------
+# Manual CLI Run
+# -------------------------------------------------------------------
 if __name__ == "__main__":
-    # Basic CLI mode for manual checks
-    print("--- 1. Checking Backend Health ---")
-    health_ok = check_health()
-    if not health_ok:
-        print("Health check FAILED. Exiting.")
+    logger.info({"event": "monitor_start"})
+
+    if not check_health():
         sys.exit(1)
 
-    print("\n--- 2. Loading Settings List ---")
     settings_list = load_settings()
+    ok, breaches = check_weather_thresholds(settings_list)
 
-    print("\n--- 3. Checking All Weather Thresholds ---")
-    weather_ok, breaches = check_weather_thresholds(settings_list)
+    if not ok:
+        logger.error({"event": "monitor_breaches_detected", "breaches": breaches})
+        sys.exit(2)
 
-    if not weather_ok:
-        print("One or more weather threshold checks FAILED. Breaches:")
-        print(json.dumps(breaches, indent=2))
-        sys.exit(1)
-
-    print("All checks passed.")
+    logger.info({"event": "monitor_complete"})
     sys.exit(0)
