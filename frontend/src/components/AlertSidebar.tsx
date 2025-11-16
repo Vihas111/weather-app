@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-// 1. IMPORT OUR NEW HOOK and the setting type
-import { useSettings, ThresholdSetting } from "@/app/context/SettingsContext";
+// 1. IMPORT FIX: Removed 'ThresholdSetting' which was unused
+import { useSettings } from "@/app/context/SettingsContext";
 
 // --- Types ---
 type BreachEntry = {
@@ -21,7 +21,6 @@ interface AlertSidebarProps {
 }
 
 // 2. DEFINE THE TYPE FOR THE RAW WEATHER DATA
-// This must match the JSON from your backend's /weather endpoint
 interface BackendWeatherResponse {
   current: {
     temp_c: number;
@@ -30,9 +29,9 @@ interface BackendWeatherResponse {
     condition: object;
     sunrise: string;
     sunset: string;
-    chance_of_rain: number; // This is the new field we need
+    chance_of_rain: number;
   };
-  // ... other fields like location, hourly, daily
+  // ... other fields
 }
 
 // 3. DEFINE THE BACKEND URL
@@ -40,20 +39,17 @@ const backendUrl =
   process.env.NEXT_PUBLIC_API_BASE ?? "http://127.0.0.1:8000";
 
 export default function AlertSidebar({ active, breaches }: AlertSidebarProps) {
-  // 4. GET SETTINGS FROM OUR NEW CONTEXT
+  // --- ALL HOOKS MUST BE CALLED AT THE TOP ---
   const { settings, isLoading: isSettingsLoading } = useSettings();
-
   const [alert, setAlert] = useState<AlertStatus | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
-
-  // ping badge animation state
   const [pingBadge, setPingBadge] = useState(false);
   const prevCountRef = useRef<number>(0);
 
   const usingProps = active !== undefined || breaches !== undefined;
 
-  // detect mobile width (No change here)
+  // detect mobile width
   useEffect(() => {
     function checkMobile() {
       const mobile = typeof window !== "undefined" && window.innerWidth < 768;
@@ -64,61 +60,44 @@ export default function AlertSidebar({ active, breaches }: AlertSidebarProps) {
     return () => window.removeEventListener("resize", checkMobile);
   }, []);
 
-  // 5. --- THIS IS THE REBUILT LOGIC ---
-  // It now reads from our context instead of fetching /alerts/status
+  // data fetching logic
   useEffect(() => {
-    // If props are passed in, or settings are still loading, do nothing.
     if (usingProps || isSettingsLoading) return;
-
     let cancelled = false;
 
     async function checkAlerts() {
-      // If user has no saved settings, show no alerts.
       if (settings.length === 0) {
         if (!cancelled) setAlert({ active: false, breaches: [] });
         return;
       }
-
       try {
-        // --- A. Create a list of fetch requests to run in parallel ---
         const fetchPromises = settings.map((setting) =>
           fetch(
             `${backendUrl}/weather?city=${encodeURIComponent(setting.city)}`,
-            {
-              cache: "no-store",
-            }
+            { cache: "no-store" }
           ).then((res) => {
             if (!res.ok) {
-              // This will be caught by Promise.all
               throw new Error(`Failed to fetch weather for ${setting.city}`);
             }
             return res.json() as Promise<BackendWeatherResponse>;
           })
         );
-
-        // --- B. Wait for all requests to finish ---
         const allWeatherResponses = await Promise.all(fetchPromises);
         const newBreaches: BreachEntry[] = [];
-
-        // --- C. Compare weather data against settings ---
         for (let i = 0; i < settings.length; i++) {
           const setting = settings[i];
           const weather = allWeatherResponses[i];
-
           const currentTemp = weather.current.temp_c;
           const currentChanceOfRain = weather.current.chance_of_rain;
-
           const cityBreaches: string[] = [];
-
-          // Check for breaches (using 999 / -999 as "N/A")
           if (setting.max_temp !== 999 && currentTemp > setting.max_temp) {
             cityBreaches.push(
-              `Temp: ${currentTemp}° (Max: ${setting.max_temp}°)`
+              `Temp: ${currentTemp}° (Max: ${setting.max_temp}°) `
             );
           }
           if (setting.min_temp !== -999 && currentTemp < setting.min_temp) {
             cityBreaches.push(
-              `Temp: ${currentTemp}° (Min: ${setting.min_temp}°)`
+              `Temp: ${currentTemp}° (Min: ${setting.min_temp}°) `
             );
           }
           if (
@@ -129,13 +108,10 @@ export default function AlertSidebar({ active, breaches }: AlertSidebarProps) {
               `Rain: ${currentChanceOfRain}% (Max: ${setting.max_chance_of_rain}%)`
             );
           }
-
           if (cityBreaches.length > 0) {
             newBreaches.push({ city: setting.city, breaches: cityBreaches });
           }
         }
-
-        // --- D. Update the component's state ---
         if (!cancelled) {
           setAlert({
             active: newBreaches.length > 0,
@@ -147,43 +123,31 @@ export default function AlertSidebar({ active, breaches }: AlertSidebarProps) {
         if (!cancelled) setAlert({ active: false, breaches: [] });
       }
     }
-
-    checkAlerts(); // Run immediately
-    const iv = setInterval(checkAlerts, 15000); // And poll every 15 seconds
+    checkAlerts();
+    const iv = setInterval(checkAlerts, 15000);
     return () => {
       cancelled = true;
       clearInterval(iv);
     };
-    // Re-run this entire effect if the user changes their settings
   }, [usingProps, settings, isSettingsLoading]);
 
-  // 6. --- THIS IS THE FIX ---
-  // If the settings are still loading from localStorage, render nothing.
-  if (isSettingsLoading) {
-    return null;
-  }
-  // --- END OF FIX ---
-
-
-  // The rest of your component logic just works!
+  // This is the data used for rendering, safe to derive state
   const display: AlertStatus = usingProps
     ? { active: active ?? false, breaches: breaches ?? [] }
     : alert ?? { active: false, breaches: [] };
 
   const alertsCount = display?.active ? display.breaches.length : 0;
 
+  // 4. --- HOOKS MOVED UP ---
   // ping animation when count increases
   useEffect(() => {
     const prev = prevCountRef.current;
     if (alertsCount > prev) {
       const startTimer = setTimeout(() => {
         setPingBadge(true);
-        const endTimer = setTimeout(() => setPingBadge(false), 700);
-        // ensure prevCountRef updated after starting animation
+        setTimeout(() => setPingBadge(false), 700);
         prevCountRef.current = alertsCount;
-        return () => clearTimeout(endTimer); // Cleanup for inner timer
       }, 0);
-
       return () => {
         clearTimeout(startTimer);
       };
@@ -201,6 +165,14 @@ export default function AlertSidebar({ active, breaches }: AlertSidebarProps) {
       document.body.style.overflow = "";
     };
   }, [drawerOpen, isMobile]);
+  
+  // 5. --- EARLY RETURN IS NOW *AFTER* ALL HOOKS ---
+  // If the settings are still loading from localStorage, render nothing.
+  if (isSettingsLoading) {
+    return null;
+  }
+  // --- END OF FIX ---
+
 
   // reusable sidebar content
   const SidebarContent = (
