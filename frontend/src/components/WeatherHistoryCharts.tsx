@@ -145,14 +145,15 @@ function HourlyCharts({
   const hums = data.map((x) => Number(x.humidity ?? 0));
 
   const opts = {
-    responsive: true,
-    maintainAspectRatio: false,
-    plugins: { legend: { labels: { color: "#000" } } },
-    scales: {
-      x: { ticks: { color: "#000" } },
-      y: { ticks: { color: "#000" } },
-    },
-  };
+  responsive: true,
+  maintainAspectRatio: false,
+  plugins: { legend: { labels: { color: "#000" } } },
+  scales: {
+    x: { ticks: { color: "#000" } },
+    y: { ticks: { color: "#000" } },
+  },
+};
+
 
   return (
     <div className="space-y-8">

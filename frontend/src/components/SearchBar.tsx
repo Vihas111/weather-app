@@ -68,12 +68,12 @@ export default function SearchBar() {
           value={city}
           onChange={(e) => setCity(e.target.value)}
           placeholder="Enter city name (e.g., london)"
-          className="flex-grow p-4 rounded-l-lg text-gray-800 focus:outline-none"
+          className="grow p-4 rounded-l-lg text-gray-800 focus:outline-none"
         />
         <button
           onClick={handleSearch}
           disabled={isLoading}
-          className="flex-shrink-0 p-4 bg-blue-600 text-white rounded-r-lg hover:bg-blue-700 disabled:bg-gray-400"
+          className="shrink-0 p-4 bg-blue-600 text-white rounded-r-lg hover:bg-blue-700 disabled:bg-gray-400"
           aria-label="Search"
         >
           {isLoading ? (
