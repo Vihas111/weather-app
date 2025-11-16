@@ -28,6 +28,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
   // State to prevent UI from flickering on load
   const [isLoading, setIsLoading] = useState(true);
 
+  // --- THIS IS THE FIX ---
   // Load settings from localStorage when the app first starts
   useEffect(() => {
     try {
@@ -41,6 +42,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
     // We are done loading
     setIsLoading(false);
   }, []); // Empty array [] means this runs only once
+  // --- END OF FIX ---
 
   // Function to save settings to both state and localStorage
   const saveSettings = (newSettings: ThresholdSetting[]) => {
@@ -53,7 +55,6 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
   };
 
   // Don't render the rest of the app until we've loaded settings
-  // This prevents the "flash" of default content.
   if (isLoading) {
     return null; 
   }
