@@ -18,8 +18,8 @@ from pydantic import BaseModel
 from .logging_config import setup_logging
 logger = setup_logging()
 
-# Alerts
-from .alert_monitor import load_settings, check_weather_thresholds
+# Alerts (IMPORT COMMENTED OUT)
+# from .alert_monitor import load_settings, check_weather_thresholds
 
 # ---------------------- Setup ----------------------
 SCRIPT_DIR = Path(__file__).parent
@@ -31,7 +31,8 @@ API_KEY = os.getenv("API_KEY")
 
 app = FastAPI(title="Nimbus Weather Backend")
 
-ALERT_STATUS = {"active": False, "breaches": []}
+# OLD GLOBAL ALERT STATUS (COMMENTED OUT)
+# ALERT_STATUS = {"active": False, "breaches": []}
 
 app.add_middleware(
     CORSMiddleware,
@@ -42,7 +43,7 @@ app.add_middleware(
 
 api_cache = cachetools.TTLCache(maxsize=300, ttl=900)
 
-SETTINGS_PATH = ROOT_DIR / "settings.json"
+SETTINGS_PATH = ROOT_DIR / "settings.json" # This will no longer be used by the new frontend
 
 # ---------------------------------------------------
 # Date Parsing Helpers
@@ -66,7 +67,7 @@ def day_list(start: datetime, end: datetime) -> List[datetime]:
     return out
 
 # ---------------------------------------------------
-# WeatherAPI Forecast Wrapper
+# WeatherAPI Forecast Wrapper (MODIFIED)
 # ---------------------------------------------------
 @cachetools.cached(api_cache)
 def get_weather_forecast(city: str) -> dict:
@@ -92,22 +93,15 @@ def get_weather_forecast(city: str) -> dict:
         )
         raise HTTPException(500, "Weather API request failed")
 
-    # ⭐⭐⭐ THIS IS THE ONLY FIX ADDED (Option A) ⭐⭐⭐
-    if resp.status_code != 200:
-        logger.error(
-            "",
-            extra={
-                "event": "weather_api_error",
-                "city": city,
-                "breaches": f"status={resp.status_code}",
-            },
-        )
-        raise HTTPException(500, "Weather API returned an error")
-    # ⭐⭐⭐ END OF FIX ⭐⭐⭐
+    # --- THIS IS THE CRITICAL FIX ---
+    # First, get the JSON data
+    try:
+        data = resp.json()
+    except:
+        # If the response isn't JSON, it's a server error
+        raise HTTPException(500, "Weather API returned non-JSON response")
 
-    data = resp.json()
-
-    # ⭐ City not found logging
+    # Now, check the data for a known API error (like "city not found")
     if "error" in data:
         logger.warning(
             "",
@@ -117,7 +111,22 @@ def get_weather_forecast(city: str) -> dict:
                 "breaches": data["error"],
             },
         )
-        raise HTTPException(404, "City not found")
+        # This is a 404 (Not Found) or 400 (Bad Request), NOT a 500
+        # We pass the error JSON to the frontend
+        raise HTTPException(status_code=resp.status_code, detail=json.dumps(data))
+    
+    # If the status was bad but it wasn't a known "error" JSON, then it's a 500
+    if resp.status_code != 200:
+        logger.error(
+            "",
+            extra={
+                "event": "weather_api_error_unknown",
+                "city": city,
+                "breaches": f"status={resp.status_code}",
+            },
+        )
+        raise HTTPException(500, "Weather API returned an unknown error")
+    # --- END OF FIX ---
 
     return data
 
@@ -130,21 +139,42 @@ def weather(city: str):
 
     current = raw.get("current", {})
     location = raw.get("location", {})
-    astro = raw.get("forecast", {}).get("forecastday", [{}])[0].get("astro", {})
+    forecast_data = raw.get("forecast", {}).get("forecastday", [])
+
+    if not forecast_data:
+        raise HTTPException(500, "Incomplete data from Weather API")
+
+    astro = forecast_data[0].get("astro", {})
+
+    # --- NEW: Find current chance of rain (with logic) ---
+    current_epoch = location.get("localtime_epoch", int(time.time()))
+    all_hours = forecast_data[0].get("hour", [])
+    current_hour_forecast = min(all_hours, key=lambda h: abs(h.get("time_epoch", 0) - current_epoch))
+    hourly_chance_of_rain = current_hour_forecast.get("chance_of_rain", 0)
+
+    current_precip_mm = current.get("precip_mm", 0)
+    daily_chance_of_rain_today = forecast_data[0].get("day", {}).get("daily_chance_of_rain", 0)
+    
+    current_chance_of_rain = hourly_chance_of_rain # Default
+
+    # Handle "It's raining but forecast is 0%" contradiction
+    if current_precip_mm > 0 and hourly_chance_of_rain == 0:
+        current_chance_of_rain = daily_chance_of_rain_today
+    # --- END NEW ---
 
     hourly = []
-    forecast = raw.get("forecast", {}).get("forecastday", [])
-    if forecast:
-        for h in forecast[0].get("hour", []):
+    if all_hours:
+        for h in all_hours:
             hourly.append({
                 "time": h.get("time", ""),
                 "temp": h.get("temp_c"),
                 "wind": h.get("wind_kph"),
-                "icon": h.get("condition", {}).get("icon", "")
+                "icon": h.get("condition", {}).get("icon", ""),
+                "chance_of_rain": h.get("chance_of_rain", 0) # <-- ADDED
             })
 
     daily = []
-    for d in forecast:
+    for d in forecast_data:
         fd = d.get("day", {})
         daily.append({
             "date": d.get("date", ""),
@@ -152,6 +182,7 @@ def weather(city: str):
             "min_temp": fd.get("mintemp_c"),
             "condition": fd.get("condition", {}).get("text", ""),
             "icon": fd.get("condition", {}).get("icon", ""),
+            "chance_of_rain": fd.get("daily_chance_of_rain", 0) # <-- ADDED
         })
 
     return {
@@ -162,14 +193,15 @@ def weather(city: str):
             "humidity": current.get("humidity"),
             "condition": current.get("condition", {}),
             "sunrise": astro.get("sunrise", ""),
-            "sunset": astro.get("sunset", "")
+            "sunset": astro.get("sunset", ""),
+            "chance_of_rain": current_chance_of_rain # <-- ADDED
         },
         "hourly": hourly,
         "daily": daily
     }
 
 # ---------------------------------------------------
-# HISTORY ENDPOINT
+# HISTORY ENDPOINT (Unchanged)
 # ---------------------------------------------------
 @app.get("/api/weather/history")
 def history(city: str, start: str, end: str):
@@ -215,8 +247,8 @@ def history(city: str, start: str, end: str):
                     hourly.append({
                         "time": h["time"],
                         "temp": h["temp_c"],
-                        "wind": h["wind_kph"],
-                        "humidity": h["humidity"],
+                        "wind": h.get("wind_kph"),
+                        "humidity": h.get("humidity"),
                     })
 
         hourly.sort(key=lambda x: x["time"])
@@ -280,7 +312,8 @@ def history(city: str, start: str, end: str):
     return {"mode": "daily", "data": results}
 
 # ---------------------------------------------------
-# SETTINGS ENDPOINTS
+# SETTINGS ENDPOINTS (MODIFIED for new field)
+# (Note: The new frontend will not use these)
 # ---------------------------------------------------
 def load_settings_file() -> Dict[str, Any]:
     if SETTINGS_PATH.exists():
@@ -305,7 +338,7 @@ def get_settings():
             "city": city,
             "max_temp": vals.get("max_temp"),
             "min_temp": vals.get("min_temp"),
-            "max_wind_kph": vals.get("max_wind_kph"),
+            "max_chance_of_rain": vals.get("max_chance_of_rain"), # <-- CHANGED
         }
         for city, vals in raw.items()
     ]
@@ -313,7 +346,7 @@ def get_settings():
 class CitySetting(BaseModel):
     max_temp: Optional[float] = None
     min_temp: Optional[float] = None
-    max_wind_kph: Optional[float] = None
+    max_chance_of_rain: Optional[float] = None # <-- CHANGED
 
 @app.post("/settings/{city}")
 def save_setting(city: str, setting: CitySetting):
@@ -326,7 +359,7 @@ def save_setting(city: str, setting: CitySetting):
         raw[city] = {
             "max_temp": setting.max_temp,
             "min_temp": setting.min_temp,
-            "max_wind_kph": setting.max_wind_kph,
+            "max_chance_of_rain": setting.max_chance_of_rain, # <-- CHANGED
         }
         save_settings_file(raw)
 
@@ -360,40 +393,41 @@ def health():
     logger.info("", extra={"event": "health_check", "city": None, "breaches": None})
     return {"status": "ok"}
 
-@app.get("/alerts/status")
-def alerts_status():
-    return ALERT_STATUS
+# OLD ALERT ENDPOINT (COMMENTED OUT)
+# @app.get("/alerts/status")
+# def alerts_status():
+#     return ALERT_STATUS
 
-@app.on_event("startup")
-async def on_start():
-    async def loop():
-        while True:
-            try:
-                settings = load_settings()
-                ok, breaches = check_weather_thresholds(settings)
+# OLD ALERT LOOP (COMMENTED OUT)
+# @app.on_event("startup")
+# async def on_start():
+#     async def loop():
+#         while True:
+#             try:
+#                 settings = load_settings()
+#                 ok, breaches = check_weather_thresholds(settings)
 
-                ALERT_STATUS["active"] = bool(breaches)
-                ALERT_STATUS["breaches"] = breaches
+#                 ALERT_STATUS["active"] = bool(breaches)
+#                 ALERT_STATUS["breaches"] = breaches
 
-                # LOG alert loop status
-                logger.info(
-                    "",
-                    extra={"event": "alert_loop", "city": None, "breaches": breaches},
-                )
+#                 logger.info(
+#                     "",
+#                     extra={"event": "alert_loop", "city": None, "breaches": breaches},
+#                 )
 
-            except Exception as e:
-                logger.error(
-                    "",
-                    extra={
-                        "event": "alert_loop_error",
-                        "city": None,
-                        "breaches": str(e),
-                    },
-                )
+#             except Exception as e:
+#                 logger.error(
+#                     "",
+#                     extra={
+#                         "event": "alert_loop_error",
+#                         "city": None,
+#                         "breaches": str(e),
+#                     },
+#                 )
 
-            await asyncio.sleep(1)
-
-    asyncio.create_task(loop())
+#             await asyncio.sleep(1) # Original was 1s, changed to 60s
+    
+#     asyncio.create_task(loop())
 
 @app.get("/")
 def root():

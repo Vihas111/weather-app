@@ -3,53 +3,44 @@ import logging
 from unittest.mock import patch
 from fastapi.testclient import TestClient
 
-# Import your app & logger (correct import for inside backend)
-from backend.main import app, logger
+# 1. THE IMPORT IS FIXED:
+from .main import app, logger
 
 client = TestClient(app)
 
 # -------------------------------------------------------------------------
-# TEST 1: Weather API Failure Should Log "weather_api_error"
+# TEST 1: "City not found" Should Log "city_not_found"
+# (This test is updated to match your new main.py)
 # -------------------------------------------------------------------------
-def test_weather_api_error_logging(caplog):
+def test_city_not_found_logging(caplog):
 
-    # Mock WeatherAPI failure
+    # Mock WeatherAPI returning a "city not found" error
     with patch("backend.main.requests.get") as mock_get:
-        mock_get.return_value.status_code = 500
-        mock_get.return_value.text = "WeatherAPI failure"
+        # This is what WeatherAPI sends for a 404
+        mock_get.return_value.status_code = 404
+        mock_get.return_value.json.return_value = {
+            "error": {"code": 1006, "message": "No matching location found."}
+        }
 
-        with caplog.at_level(logging.ERROR):
-            response = client.get("/weather?city=InvalidCity123")
+        # The log we are looking for is a WARNING
+        with caplog.at_level(logging.WARNING):
+            response = client.get("/weather?city=FakeCity123")
 
-        assert response.status_code == 500
+        # The frontend should get a 404
+        assert response.status_code == 404
 
         # Verify the expected log was emitted
         found = False
         for r in caplog.records:
-            if getattr(r, "event", None) == "weather_api_error":
-                assert r.city == "InvalidCity123"
+            if getattr(r, "event", None) == "city_not_found":
+                assert r.city == "FakeCity123"
                 found = True
-        assert found, "weather_api_error log event missing"
+                
+        assert found, "city_not_found log event missing"
 
 
 # -------------------------------------------------------------------------
-# TEST 2: Alert Loop Should Log "alert_loop"
+# TEST 2: (test_alert_loop_logging)
+# This test has been DELETED because the alert loop was
+# intentionally commented out of main.py.
 # -------------------------------------------------------------------------
-def test_alert_loop_logging(caplog):
-
-    fake_breaches = [{"city": "TestCity", "breaches": ["Max Temp Exceeded"]}]
-
-    # We mock "check_weather_thresholds" so the backend thinks there's a breach
-    with patch("backend.main.check_weather_thresholds", return_value=(False, fake_breaches)):
-
-        with caplog.at_level(logging.INFO):
-            # Simulate ONE iteration of the loop manually
-            logger.info("", extra={"event": "alert_loop", "city": None, "breaches": fake_breaches})
-
-    found = False
-    for r in caplog.records:
-        if getattr(r, "event", None) == "alert_loop":
-            assert r.breaches == fake_breaches
-            found = True
-
-    assert found, "alert_loop logging event missing"

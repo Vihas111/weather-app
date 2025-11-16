@@ -5,7 +5,7 @@ import Link from 'next/link';
 import ErrorBanner from '@/components/ErrorBanner';
 import WeatherCharts from '@/components/WeatherCharts';
 
-// --- Weather data type ---
+// --- Weather data type (MODIFIED) ---
 interface WeatherData {
   location: {
     name: string;
@@ -17,12 +17,14 @@ interface WeatherData {
     condition: { text: string; icon: string };
     humidity: number;
     wind_kph: number;
+    chance_of_rain: number; // <-- ADDED
   };
   hourly: Array<{
     time: string;
     temp: number;
     icon: string;
     wind: number;
+    chance_of_rain: number; // <-- ADDED
   }>;
   daily: Array<{
     date: string;
@@ -30,30 +32,14 @@ interface WeatherData {
     min_temp: number;
     condition: string;
     icon: string;
+    chance_of_rain: number; // <-- ADDED
   }>;
   backend_duration_ms?: number;
 }
 
-// --- Alert breach type ---
-interface AlertBreach {
-  city: string;
-  reason: string;
-  value: number;
-  threshold: number;
-}
-
 // --- Error response structure ---
 interface ErrorResponse {
-  detail?: {
-    error?: {
-      message?: string;
-    };
-  };
-}
-
-// --- Alerts status response ---
-interface AlertsStatusResponse {
-  breaches?: AlertBreach[];
+  detail?: string; // Updated based on your backend's 404/500
 }
 
 export default function HomePage() {
@@ -61,13 +47,12 @@ export default function HomePage() {
   const [data, setData] = useState<WeatherData | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [alertBreaches, setAlertBreaches] = useState<AlertBreach[]>([]);
 
   const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? 'http://127.0.0.1:8000';
 
+  // --- handleSearch (MODIFIED) ---
   async function handleSearch(e: React.FormEvent) {
     e.preventDefault();
-
     if (!city.trim()) return;
 
     setLoading(true);
@@ -83,25 +68,35 @@ export default function HomePage() {
       const res = await fetch(url);
 
       if (!res.ok) {
-        let finalMessage = 'Invalid city';
-
+        // --- THIS IS THE CORRECTED ERROR BLOCK ---
+        let finalMessage = `Error: ${res.status}`;
         try {
+          // Try to parse the JSON error message from FastAPI
           const json: ErrorResponse = await res.json();
-          const detail = json.detail;
-
-          if (detail?.error?.message) {
-            finalMessage = `Invalid city: ${detail.error.message}`;
+          
+          // **THE FIX IS HERE:**
+          // We must check if json.detail is a string before parsing
+          if (typeof json.detail === 'string') {
+            // The error message from WeatherAPI is nested in 'detail'
+            const detailData = JSON.parse(json.detail);
+            if (detailData.error && detailData.error.message) {
+              finalMessage = detailData.error.message; // e.g., "No matching location found."
+            } else {
+              // Fallback if detail is not a string
+              finalMessage = `Invalid city or API error (${res.status})`;
+            }
           }
         } catch {
-          finalMessage = `Invalid city (API error ${res.status})`;
+          // Fallback if parsing fails
+          finalMessage = `Invalid city or API error (${res.status})`;
         }
-
         throw new Error(finalMessage);
+        // --- END OF CORRECTED BLOCK ---
       }
 
       const weatherData = await res.json();
 
-      // Normalize to WeatherData
+      // Normalize to WeatherData (MODIFIED)
       const normalized: WeatherData = {
         location: {
           name: weatherData.location?.name ?? '',
@@ -114,34 +109,18 @@ export default function HomePage() {
             weatherData.current?.condition ?? { text: '', icon: '' },
           humidity: weatherData.current?.humidity ?? 0,
           wind_kph: weatherData.current?.wind_kph ?? 0,
+          chance_of_rain: weatherData.current?.chance_of_rain ?? 0, // <-- ADDED
         },
-        hourly: weatherData.hourly ?? [],
-        daily: weatherData.daily ?? [],
+        hourly: weatherData.hourly ?? [], // These arrays now include chance_of_rain
+        daily: weatherData.daily ?? [], // These arrays now include chance_of_rain
         backend_duration_ms: weatherData.backend_duration_ms ?? 0,
       };
 
       setData(normalized);
 
-      // Fetch alert status
-      try {
-        const alertRes = await fetch(
-          `${API_BASE.replace(/\/$/, '')}/alerts/status`
-        );
-        if (alertRes.ok) {
-          const alertJson: AlertsStatusResponse = await alertRes.json();
+      // --- OLD ALERT FETCH REMOVED ---
+      // The AlertSidebar now handles all alert logic independently.
 
-          if (Array.isArray(alertJson.breaches)) {
-            setAlertBreaches(alertJson.breaches);
-          } else {
-            setAlertBreaches([]);
-          }
-        } else {
-          setAlertBreaches([]);
-        }
-      } catch {
-        console.error('Failed to fetch alerts');
-        setAlertBreaches([]);
-      }
     } catch (err) {
       if (err instanceof Error) setError(err.message);
       else setError('Unknown error');
@@ -150,17 +129,8 @@ export default function HomePage() {
     }
   }
 
-  // SAFE alert matching without any type issues
-  const cityUnderAlert =
-    data?.location?.name &&
-    alertBreaches.some((b) => {
-      if (!b.city) return false;
-      if (typeof b.city !== 'string') return false;
-
-      return (
-        b.city.toLowerCase() === data.location.name.toLowerCase()
-      );
-    });
+  // --- OLD ALERT LOGIC REMOVED ---
+  // const cityUnderAlert = ...
 
   return (
     <div className="min-h-screen bg-gray-100 p-8 flex flex-col items-center">
@@ -211,13 +181,9 @@ export default function HomePage() {
       {/* WEATHER DETAILS */}
       {data && (
         <div className="w-full max-w-3xl space-y-6">
-          {/* CURRENT WEATHER CARD */}
+          {/* CURRENT WEATHER CARD (MODIFIED) */}
           <div
-            className={`p-8 rounded-xl shadow-md flex justify-between items-center ${
-              cityUnderAlert
-                ? 'bg-red-50 border border-red-300'
-                : 'bg-white'
-            }`}
+            className={`p-8 rounded-xl shadow-md flex justify-between items-center bg-white`} // <-- REMOVED RED BORDER LOGIC
           >
             <div>
               <h2 className="text-4xl font-bold text-gray-900">
@@ -250,7 +216,7 @@ export default function HomePage() {
             <div className="text-right text-gray-700 text-lg space-y-2">
               <p>Humidity: {data.current.humidity}%</p>
               <p>Wind: {data.current.wind_kph} km/h</p>
-
+              <p>Rain: {data.current.chance_of_rain}%</p> {/* <-- ADDED */}
               {typeof data.backend_duration_ms === 'number' && (
                 <p className="text-sm text-gray-500">
                   Backend: {data.backend_duration_ms} ms
@@ -259,7 +225,7 @@ export default function HomePage() {
             </div>
           </div>
 
-          {/* HOURLY FORECAST */}
+          {/* HOURLY FORECAST (MODIFIED) */}
           <div className="bg-white p-6 rounded-xl shadow-md">
             <h3 className="text-xl font-bold text-gray-800 mb-4">
               {"Today's Forecast"}
@@ -271,7 +237,14 @@ export default function HomePage() {
                   key={h.time}
                   className="min-w-[110px] bg-blue-50 p-4 rounded-lg text-center"
                 >
-                  <p className="text-gray-600 font-medium">{h.time}</p>
+                  <p className="text-gray-600 font-medium">
+                    {/* Format the time nicely */}
+                    {new Date(h.time).toLocaleTimeString('en-US', {
+                      hour: '2-digit',
+                      minute: '2-digit',
+                      hour12: false,
+                    })}
+                  </p>
 
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
@@ -288,12 +261,16 @@ export default function HomePage() {
                     {h.temp}°
                   </p>
                   <p className="text-sm text-blue-500">{h.wind} km/h</p>
+                  <p className="text-sm text-blue-700 font-medium">
+                    🌧️ {h.chance_of_rain}%
+                  </p>{' '}
+                  {/* <-- ADDED */}
                 </div>
               ))}
             </div>
           </div>
 
-          {/* DAILY FORECAST */}
+          {/* DAILY FORECAST (MODIFIED) */}
           <div className="bg-white p-6 rounded-xl shadow-md">
             <h3 className="text-xl font-bold text-gray-800 mb-4">
               3-Day Forecast
@@ -310,6 +287,10 @@ export default function HomePage() {
                       {d.date}
                     </p>
                     <p className="text-gray-500">{d.condition}</p>
+                    <p className="text-sm text-blue-600 mt-1">
+                      🌧️ {d.chance_of_rain}% Chance of Rain
+                    </p>{' '}
+                    {/* <-- ADDED */}
                   </div>
 
                   <div className="flex items-center gap-6">

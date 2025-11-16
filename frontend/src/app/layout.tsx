@@ -4,7 +4,7 @@ import "@/app/globals.css";
 
 import HealthAlert from "@/components/HealthAlert";
 import AlertSidebar from "@/components/AlertSidebar";
-
+import { SettingsProvider } from "@/app/context/SettingsContext"; // <-- 1. IMPORT
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -31,9 +31,11 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
-        <HealthAlert />
-        <AlertSidebar />
-        {children}
+        <SettingsProvider> {/* <-- 2. WRAP YOUR APP */}
+          <HealthAlert />
+          <AlertSidebar />
+          {children}
+        </SettingsProvider> {/* <-- 2. WRAP YOUR APP */}
       </body>
     </html>
   );

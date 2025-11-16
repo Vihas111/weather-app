@@ -2,7 +2,7 @@
 
 import logging
 import requests
-from pythonjsonlogger import jsonlogger
+from pythonjsonlogger import json as jsonlogger
 
 # --------------------------------
 # BetterStack Config

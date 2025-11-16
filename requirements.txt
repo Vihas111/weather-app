@@ -4,3 +4,7 @@ requests
 python-dotenv
 pytest
 cachetools
+python-json-logger
+httpx
+pytest 
+pytest-mock
